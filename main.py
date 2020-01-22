@@ -30,7 +30,8 @@ def main(args):
     rtc_host_ip = args.rtc_host_ip if not is_sim else None # IP and port to robot arm as real-time client (UR5)
     rtc_port = args.rtc_port if not is_sim else None
     if is_sim:
-        workspace_limits = np.asarray([[-0.724, -0.276], [-0.224, 0.224], [-0.0001, 0.4]]) # Cols: min max, Rows: x y z (define workspace limits in robot coordinates)
+        # workspace_limits = np.asarray([[-0.724, -0.276], [-0.224, 0.224], [-0.0001, 0.4]]) # Cols: min max, Rows: x y z (define workspace limits in robot coordinates)
+        workspace_limits = np.asarray([[-0.524, -0.276], [-0.224, 0.224], [-0.0001, 0.4]]) # Cols: min max, Rows: x y z (define workspace limits in robot coordinates)
     else:
         workspace_limits = np.asarray([[0.3, 0.748], [-0.224, 0.224], [-0.255, -0.1]]) # Cols: min max, Rows: x y z (define workspace limits in robot coordinates)
     heightmap_resolution = args.heightmap_resolution # Meters per pixel of heightmap
@@ -71,7 +72,6 @@ def main(args):
     # Initialize trainer
     trainer = Trainer(method, push_rewards, future_reward_discount,
                       is_testing, load_snapshot, snapshot_file, force_cpu)
-
     # Initialize data logger
     logger = Logger(continue_logging, logging_directory)
     logger.save_camera_info(robot.cam_intrinsics, robot.cam_pose, robot.cam_depth_scale) # Save camera intrinsics and pose
@@ -92,9 +92,50 @@ def main(args):
                           'push_success' : False,
                           'grasp_success' : False} 
 
-
     # Parallel thread to process network output and execute actions
     # -------------------------------------------------------------
+    def simply_push():
+        while True:
+            # execute push towards nonlocal_variables['best_pix_ind'] position if executing_action is true
+            if nonlocal_variables['executing_action']:
+                nonlocal_variables['primitive_action'] = 'push'
+                # ex: (11, 153, 120)
+                # NOTE: shape is (16, 224, 224)
+                # nonlocal_variables['best_pix_ind'] = np.unravel_index(np.argmax(push_predictions), push_predictions.shape)
+                # predicted_value = np.max(push_predictions)
+
+                # Compute 3D position of pixel
+                print('Action: %s at (%d, %d, %d)' % (nonlocal_variables['primitive_action'], nonlocal_variables['best_pix_ind'][0], nonlocal_variables['best_pix_ind'][1], nonlocal_variables['best_pix_ind'][2]))
+                best_rotation_angle = np.deg2rad(nonlocal_variables['best_pix_ind'][0]*(360.0/trainer.model.num_rotations))
+                best_pix_x = nonlocal_variables['best_pix_ind'][2]
+                best_pix_y = nonlocal_variables['best_pix_ind'][1]
+                primitive_position = [best_pix_x * heightmap_resolution + workspace_limits[0][0], best_pix_y * heightmap_resolution + workspace_limits[1][0], valid_depth_heightmap[best_pix_y][best_pix_x] + workspace_limits[2][0]]
+
+                # If pushing, adjust start position, and make sure z value is safe and not too low
+                finger_width = 0.02
+                safe_kernel_width = int(np.round((finger_width/2)/heightmap_resolution))
+                local_region = valid_depth_heightmap[max(best_pix_y - safe_kernel_width, 0):min(best_pix_y + safe_kernel_width + 1, valid_depth_heightmap.shape[0]), max(best_pix_x - safe_kernel_width, 0):min(best_pix_x + safe_kernel_width + 1, valid_depth_heightmap.shape[1])]
+                if local_region.size == 0:
+                    safe_z_position = workspace_limits[2][0]
+                else:
+                    safe_z_position = np.max(local_region) + workspace_limits[2][0]
+                primitive_position[2] = safe_z_position
+
+                # Execute primitive
+                if nonlocal_variables['primitive_action'] == 'push':
+                    nonlocal_variables['push_success'] = robot.push(primitive_position, best_rotation_angle, workspace_limits)
+                    print('Push successful: %r' % (nonlocal_variables['push_success']))
+                elif nonlocal_variables['primitive_action'] == 'grasp':
+                    nonlocal_variables['grasp_success'] = robot.grasp(primitive_position, best_rotation_angle, workspace_limits)
+                    print('Grasp successful: %r' % (nonlocal_variables['grasp_success']))
+
+                nonlocal_variables['executing_action'] = False
+
+            time.sleep(0.01)
+    simply_push_thread = threading.Thread(target=simply_push)
+    simply_push_thread.daemon = True
+    simply_push_thread.start()
+
     def process_actions():
         while True:
             if nonlocal_variables['executing_action']:
@@ -202,9 +243,9 @@ def main(args):
                 nonlocal_variables['executing_action'] = False
 
             time.sleep(0.01)
-    action_thread = threading.Thread(target=process_actions)
-    action_thread.daemon = True
-    action_thread.start()
+    # action_thread = threading.Thread(target=process_actions)
+    # action_thread.daemon = True
+    # action_thread.start()
     exit_called = False
     # -------------------------------------------------------------
     # -------------------------------------------------------------
@@ -221,6 +262,15 @@ def main(args):
         # Get latest RGB-D image
         color_img, depth_img = robot.get_camera_data()
         depth_img = depth_img * robot.cam_depth_scale # Apply depth scale from calibration
+        segment_img = robot.get_segmentation_camera_data()
+        obj2segmented_img = robot.get_segmented_images(segment_img, color_img)
+        # cv2.imshow('segmentation', segment_img.copy().astype(np.uint8))
+        # cv2.imshow('rgb_camera', color_img.copy().astype(np.uint8))
+        # cv2.imshow('depth_camera', depth_img.copy().astype(np.uint8))
+        # cv2.imshow('segmented_img', obj2segmented_img[robot.object_handles[0]])
+        # cv2.imshow('segmented_img2', obj2segmented_img[robot.object_handles[1]])
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
 
         # Get heightmap from RGB-D image (by re-projecting 3D point cloud)
         color_heightmap, depth_heightmap = utils.get_heightmap(color_img, depth_img, robot.cam_intrinsics, robot.cam_pose, workspace_limits, heightmap_resolution)
@@ -244,7 +294,9 @@ def main(args):
                 robot.restart_sim()
                 robot.add_objects()
                 if is_testing: # If at end of test run, re-load original weights (before test run)
+                    print('loading model...')
                     trainer.model.load_state_dict(torch.load(snapshot_file))
+                    print('finished...')
             else:
                 # print('Not enough stuff on the table (value: %d)! Pausing for 30 seconds.' % (np.sum(stuff_count)))
                 # time.sleep(30)
@@ -260,7 +312,17 @@ def main(args):
         if not exit_called: 
 
             # Run forward pass with network to get affordances
-            push_predictions, grasp_predictions, state_feat = trainer.forward(color_heightmap, valid_depth_heightmap, is_volatile=True)
+            # print('running forward path')
+            # push_predictions, grasp_predictions, state_feat = trainer.forward(color_heightmap, valid_depth_heightmap, is_volatile=True)
+            # print('forward path calculation finished')
+            # NOTE: first index of push_predictions corresponds to pushing direction (orientation)
+            # push_predictions = (11, 153, 120)
+            # execute pushing at a heuristically calculated position
+            nonlocal_variables['best_pix_ind'] = trainer.push_heuristic(valid_depth_heightmap)
+            print('best_pix_ind', nonlocal_variables['best_pix_ind'])
+            # nonlocal_variables['best_pix_ind'] = (11, 153, 120)
+            # print('push_predictions', push_predictions)
+            # print('grasp_predictions', grasp_predictions)
 
             # Execute best primitive action on robot in another thread
             nonlocal_variables['executing_action'] = True
@@ -282,14 +344,19 @@ def main(args):
             if change_detected:
                 if prev_primitive_action == 'push':
                     no_change_count[0] = 0
-                elif prev_primitive_action == 'grasp':
-                    no_change_count[1] = 0
+                # elif prev_primitive_action == 'grasp':
+                #     no_change_count[1] = 0
             else:
                 if prev_primitive_action == 'push':
                     no_change_count[0] += 1
-                elif prev_primitive_action == 'grasp':
-                    no_change_count[1] += 1
+                # elif prev_primitive_action == 'grasp':
+                #     no_change_count[1] += 1
+            assert no_change_count[1] == 0  # we don't use 1st index.
 
+            # NOTE: WHat is this?????
+            # - what is the output of trainer.get_label_value
+            #   - actual return of the func is (expected_reward, current_reward)
+            #   - label corresponds to a label in the sense of supervised learning
             # Compute training labels
             label_value, prev_reward_value = trainer.get_label_value(prev_primitive_action, prev_push_success, prev_grasp_success, change_detected, prev_push_predictions, prev_grasp_predictions, color_heightmap, valid_depth_heightmap)
             trainer.label_value_log.append([label_value]) 
@@ -304,6 +371,7 @@ def main(args):
             if not is_testing:
                 explore_prob = max(0.5 * np.power(0.9998, trainer.iteration),0.1) if explore_rate_decay else 0.5
 
+            # NOTE: Where does it actually "sample"??
             # Do sampling for experience replay
             if experience_replay and not is_testing:
                 sample_primitive_action = prev_primitive_action
@@ -381,6 +449,7 @@ def main(args):
                         trainer.model = trainer.model.cuda()
 
         # Sync both action thread and training thread
+        import ipdb; ipdb.set_trace()
         while nonlocal_variables['executing_action']:
             time.sleep(0.01)
 
@@ -390,14 +459,15 @@ def main(args):
         # Save information for next training step
         prev_color_img = color_img.copy()
         prev_depth_img = depth_img.copy()
-        prev_color_heightmap = color_heightmap.copy()
-        prev_depth_heightmap = depth_heightmap.copy()
-        prev_valid_depth_heightmap = valid_depth_heightmap.copy()
-        prev_push_success = nonlocal_variables['push_success']
-        prev_grasp_success = nonlocal_variables['grasp_success']
-        prev_primitive_action = nonlocal_variables['primitive_action']
-        prev_push_predictions = push_predictions.copy()
-        prev_grasp_predictions = grasp_predictions.copy()
+        prev_obj2segmentation_img = {key: img.copy() for key, img in obj2segmented_img.items()}
+        # prev_color_heightmap = color_heightmap.copy()
+        # prev_depth_heightmap = depth_heightmap.copy()
+        # prev_valid_depth_heightmap = valid_depth_heightmap.copy()
+        # prev_push_success = nonlocal_variables['push_success']
+        # prev_grasp_success = nonlocal_variables['grasp_success']
+        # prev_primitive_action = nonlocal_variables['primitive_action']
+        # prev_push_predictions = push_predictions.copy()
+        # prev_grasp_predictions = grasp_predictions.copy()
         prev_best_pix_ind = nonlocal_variables['best_pix_ind']
 
         trainer.iteration += 1

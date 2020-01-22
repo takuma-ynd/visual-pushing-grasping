@@ -400,6 +400,7 @@ class Trainer(object):
 
 
     def push_heuristic(self, depth_heightmap):
+        # TODO: add sampling feature? (sample according to the heuristic score but not take max)
 
         num_rotations = 16
 
