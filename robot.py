@@ -431,7 +431,7 @@ class Robot(object):
         if len(segment_img.shape) == 2:
             segment_img = segment_img[:, :, np.newaxis]
         for obj in self.object_handles:
-            obj_region = (segment_img == obj)
+            obj_region = (segment_img == obj - 1)  # NOTE: I don't know if "-1" makes it work or maybe it's still buggy.
             obj2segmented_img[obj] = (obj_region * color_img).astype(np.uint8)
 
         return obj2segmented_img

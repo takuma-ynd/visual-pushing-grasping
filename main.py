@@ -83,7 +83,7 @@ def main(args):
 
     # Initialize variables for heuristic bootstrapping and exploration probability
     no_change_count = [2, 2] if not is_testing else [0, 0]
-    explore_prob = 0.5 if not is_testing else 0.0
+    # explore_prob = 0.5 if not is_testing else 0.0
 
     # Quick hack for nonlocal memory between threads in Python 2
     nonlocal_variables = {'executing_action' : False,
@@ -265,10 +265,13 @@ def main(args):
         segment_img = robot.get_segmentation_camera_data()
         obj2segmented_img = robot.get_segmented_images(segment_img, color_img)
         # cv2.imshow('segmentation', segment_img.copy().astype(np.uint8))
-        # cv2.imshow('rgb_camera', color_img.copy().astype(np.uint8))
+        # cv2.imshow('rgb_camera', cv2.cvtColor(color_img.copy().astype(np.uint8), cv2.COLOR_RGB2BGR))
         # cv2.imshow('depth_camera', depth_img.copy().astype(np.uint8))
-        # cv2.imshow('segmented_img', obj2segmented_img[robot.object_handles[0]])
-        # cv2.imshow('segmented_img2', obj2segmented_img[robot.object_handles[1]])
+        print(robot.object_handles)
+        # cv2.imshow('segmented_img', cv2.cvtColor(obj2segmented_img[robot.object_handles[0]], cv2.COLOR_RGB2BGR))
+        # cv2.imshow('segmented_img2',cv2.cvtColor(obj2segmented_img[robot.object_handles[1]], cv2.COLOR_RGB2BGR))
+        # cv2.imshow('segmented_img3',cv2.cvtColor(obj2segmented_img[robot.object_handles[2]], cv2.COLOR_RGB2BGR))
+        # cv2.imshow('segmented_img4',cv2.cvtColor(obj2segmented_img[robot.object_handles[3]], cv2.COLOR_RGB2BGR))
         # cv2.waitKey(0)
         # cv2.destroyAllWindows()
 
@@ -280,6 +283,7 @@ def main(args):
         # Save RGB-D images and RGB-D heightmaps
         logger.save_images(trainer.iteration, color_img, depth_img, '0')
         logger.save_heightmaps(trainer.iteration, color_heightmap, valid_depth_heightmap, '0')
+        logger.save_segmented_images(trainer.iteration, obj2segmented_img, '0')
 
         # Reset simulation or pause real-world training if table is empty
         stuff_count = np.zeros(valid_depth_heightmap.shape)
@@ -338,7 +342,7 @@ def main(args):
             depth_diff[depth_diff > 0] = 1
             change_threshold = 300
             change_value = np.sum(depth_diff)
-            change_detected = change_value > change_threshold or prev_grasp_success
+            change_detected = change_value > change_threshold  # or prev_grasp_success
             print('Change detected: %r (value: %d)' % (change_detected, change_value))
 
             if change_detected:
@@ -351,102 +355,103 @@ def main(args):
                     no_change_count[0] += 1
                 # elif prev_primitive_action == 'grasp':
                 #     no_change_count[1] += 1
-            assert no_change_count[1] == 0  # we don't use 1st index.
+            print('no_change_count:', no_change_count)
+            # assert no_change_count[1] == 0  # we don't use 1st index.
 
             # NOTE: WHat is this?????
             # - what is the output of trainer.get_label_value
             #   - actual return of the func is (expected_reward, current_reward)
             #   - label corresponds to a label in the sense of supervised learning
             # Compute training labels
-            label_value, prev_reward_value = trainer.get_label_value(prev_primitive_action, prev_push_success, prev_grasp_success, change_detected, prev_push_predictions, prev_grasp_predictions, color_heightmap, valid_depth_heightmap)
-            trainer.label_value_log.append([label_value]) 
-            logger.write_to_log('label-value', trainer.label_value_log)
-            trainer.reward_value_log.append([prev_reward_value])
-            logger.write_to_log('reward-value', trainer.reward_value_log)
+            # label_value, prev_reward_value = trainer.get_label_value(prev_primitive_action, prev_push_success, prev_grasp_success, change_detected, prev_push_predictions, prev_grasp_predictions, color_heightmap, valid_depth_heightmap)
+            # trainer.label_value_log.append([label_value]) 
+            # logger.write_to_log('label-value', trainer.label_value_log)
+            # trainer.reward_value_log.append([prev_reward_value])
+            # logger.write_to_log('reward-value', trainer.reward_value_log)
 
             # Backpropagate
-            trainer.backprop(prev_color_heightmap, prev_valid_depth_heightmap, prev_primitive_action, prev_best_pix_ind, label_value)
+            # trainer.backprop(prev_color_heightmap, prev_valid_depth_heightmap, prev_primitive_action, prev_best_pix_ind, label_value)
 
             # Adjust exploration probability
-            if not is_testing:
-                explore_prob = max(0.5 * np.power(0.9998, trainer.iteration),0.1) if explore_rate_decay else 0.5
+            # if not is_testing:
+            #     explore_prob = max(0.5 * np.power(0.9998, trainer.iteration),0.1) if explore_rate_decay else 0.5
 
             # NOTE: Where does it actually "sample"??
             # Do sampling for experience replay
-            if experience_replay and not is_testing:
-                sample_primitive_action = prev_primitive_action
-                if sample_primitive_action == 'push':
-                    sample_primitive_action_id = 0
-                    if method == 'reactive':
-                        sample_reward_value = 0 if prev_reward_value == 1 else 1 # random.randint(1, 2) # 2
-                    elif method == 'reinforcement':
-                        sample_reward_value = 0 if prev_reward_value == 0.5 else 0.5
-                elif sample_primitive_action == 'grasp':
-                    sample_primitive_action_id = 1
-                    if method == 'reactive':
-                        sample_reward_value = 0 if prev_reward_value == 1 else 1
-                    elif method == 'reinforcement':
-                        sample_reward_value = 0 if prev_reward_value == 1 else 1
+            # if experience_replay and not is_testing:
+            #     sample_primitive_action = prev_primitive_action
+            #     if sample_primitive_action == 'push':
+            #         sample_primitive_action_id = 0
+            #         if method == 'reactive':
+            #             sample_reward_value = 0 if prev_reward_value == 1 else 1 # random.randint(1, 2) # 2
+            #         elif method == 'reinforcement':
+            #             sample_reward_value = 0 if prev_reward_value == 0.5 else 0.5
+            #     elif sample_primitive_action == 'grasp':
+            #         sample_primitive_action_id = 1
+            #         if method == 'reactive':
+            #             sample_reward_value = 0 if prev_reward_value == 1 else 1
+            #         elif method == 'reinforcement':
+            #             sample_reward_value = 0 if prev_reward_value == 1 else 1
 
                 # Get samples of the same primitive but with different results
-                sample_ind = np.argwhere(np.logical_and(np.asarray(trainer.reward_value_log)[1:trainer.iteration,0] == sample_reward_value, np.asarray(trainer.executed_action_log)[1:trainer.iteration,0] == sample_primitive_action_id))
+                # sample_ind = np.argwhere(np.logical_and(np.asarray(trainer.reward_value_log)[1:trainer.iteration,0] == sample_reward_value, np.asarray(trainer.executed_action_log)[1:trainer.iteration,0] == sample_primitive_action_id))
                 
-                if sample_ind.size > 0:
+                # if sample_ind.size > 0:
 
-                    # Find sample with highest surprise value
-                    if method == 'reactive':
-                        sample_surprise_values = np.abs(np.asarray(trainer.predicted_value_log)[sample_ind[:,0]] - (1 - sample_reward_value))
-                    elif method == 'reinforcement':
-                        sample_surprise_values = np.abs(np.asarray(trainer.predicted_value_log)[sample_ind[:,0]] - np.asarray(trainer.label_value_log)[sample_ind[:,0]])
-                    sorted_surprise_ind = np.argsort(sample_surprise_values[:,0])
-                    sorted_sample_ind = sample_ind[sorted_surprise_ind,0]
-                    pow_law_exp = 2
-                    rand_sample_ind = int(np.round(np.random.power(pow_law_exp, 1)*(sample_ind.size-1)))
-                    sample_iteration = sorted_sample_ind[rand_sample_ind]
-                    print('Experience replay: iteration %d (surprise value: %f)' % (sample_iteration, sample_surprise_values[sorted_surprise_ind[rand_sample_ind]]))
+                #     # Find sample with highest surprise value
+                #     if method == 'reactive':
+                #         sample_surprise_values = np.abs(np.asarray(trainer.predicted_value_log)[sample_ind[:,0]] - (1 - sample_reward_value))
+                #     elif method == 'reinforcement':
+                #         sample_surprise_values = np.abs(np.asarray(trainer.predicted_value_log)[sample_ind[:,0]] - np.asarray(trainer.label_value_log)[sample_ind[:,0]])
+                #     sorted_surprise_ind = np.argsort(sample_surprise_values[:,0])
+                #     sorted_sample_ind = sample_ind[sorted_surprise_ind,0]
+                #     pow_law_exp = 2
+                #     rand_sample_ind = int(np.round(np.random.power(pow_law_exp, 1)*(sample_ind.size-1)))
+                #     sample_iteration = sorted_sample_ind[rand_sample_ind]
+                #     print('Experience replay: iteration %d (surprise value: %f)' % (sample_iteration, sample_surprise_values[sorted_surprise_ind[rand_sample_ind]]))
 
-                    # Load sample RGB-D heightmap
-                    sample_color_heightmap = cv2.imread(os.path.join(logger.color_heightmaps_directory, '%06d.0.color.png' % (sample_iteration)))
-                    sample_color_heightmap = cv2.cvtColor(sample_color_heightmap, cv2.COLOR_BGR2RGB)
-                    sample_depth_heightmap = cv2.imread(os.path.join(logger.depth_heightmaps_directory, '%06d.0.depth.png' % (sample_iteration)), -1)
-                    sample_depth_heightmap = sample_depth_heightmap.astype(np.float32)/100000
+                #     # Load sample RGB-D heightmap
+                #     sample_color_heightmap = cv2.imread(os.path.join(logger.color_heightmaps_directory, '%06d.0.color.png' % (sample_iteration)))
+                #     sample_color_heightmap = cv2.cvtColor(sample_color_heightmap, cv2.COLOR_BGR2RGB)
+                #     sample_depth_heightmap = cv2.imread(os.path.join(logger.depth_heightmaps_directory, '%06d.0.depth.png' % (sample_iteration)), -1)
+                #     sample_depth_heightmap = sample_depth_heightmap.astype(np.float32)/100000
 
-                    # Compute forward pass with sample
-                    sample_push_predictions, sample_grasp_predictions, sample_state_feat = trainer.forward(sample_color_heightmap, sample_depth_heightmap, is_volatile=True)
+                #     # Compute forward pass with sample
+                #     sample_push_predictions, sample_grasp_predictions, sample_state_feat = trainer.forward(sample_color_heightmap, sample_depth_heightmap, is_volatile=True)
 
-                    # Load next sample RGB-D heightmap
-                    next_sample_color_heightmap = cv2.imread(os.path.join(logger.color_heightmaps_directory, '%06d.0.color.png' % (sample_iteration+1)))
-                    next_sample_color_heightmap = cv2.cvtColor(next_sample_color_heightmap, cv2.COLOR_BGR2RGB)
-                    next_sample_depth_heightmap = cv2.imread(os.path.join(logger.depth_heightmaps_directory, '%06d.0.depth.png' % (sample_iteration+1)), -1)
-                    next_sample_depth_heightmap = next_sample_depth_heightmap.astype(np.float32)/100000
+                #     # Load next sample RGB-D heightmap
+                #     next_sample_color_heightmap = cv2.imread(os.path.join(logger.color_heightmaps_directory, '%06d.0.color.png' % (sample_iteration+1)))
+                #     next_sample_color_heightmap = cv2.cvtColor(next_sample_color_heightmap, cv2.COLOR_BGR2RGB)
+                #     next_sample_depth_heightmap = cv2.imread(os.path.join(logger.depth_heightmaps_directory, '%06d.0.depth.png' % (sample_iteration+1)), -1)
+                #     next_sample_depth_heightmap = next_sample_depth_heightmap.astype(np.float32)/100000
 
-                    sample_push_success = sample_reward_value == 0.5
-                    sample_grasp_success = sample_reward_value == 1
-                    sample_change_detected = sample_push_success
-                    new_sample_label_value, _ = trainer.get_label_value(sample_primitive_action, sample_push_success, sample_grasp_success, sample_change_detected, sample_push_predictions, sample_grasp_predictions, next_sample_color_heightmap, next_sample_depth_heightmap)
+                #     sample_push_success = sample_reward_value == 0.5
+                #     sample_grasp_success = sample_reward_value == 1
+                #     sample_change_detected = sample_push_success
+                #     new_sample_label_value, _ = trainer.get_label_value(sample_primitive_action, sample_push_success, sample_grasp_success, sample_change_detected, sample_push_predictions, sample_grasp_predictions, next_sample_color_heightmap, next_sample_depth_heightmap)
 
                     # Get labels for sample and backpropagate
-                    sample_best_pix_ind = (np.asarray(trainer.executed_action_log)[sample_iteration,1:4]).astype(int)
-                    trainer.backprop(sample_color_heightmap, sample_depth_heightmap, sample_primitive_action, sample_best_pix_ind, trainer.label_value_log[sample_iteration])
+                    # sample_best_pix_ind = (np.asarray(trainer.executed_action_log)[sample_iteration,1:4]).astype(int)
+                    # trainer.backprop(sample_color_heightmap, sample_depth_heightmap, sample_primitive_action, sample_best_pix_ind, trainer.label_value_log[sample_iteration])
 
                     # Recompute prediction value and label for replay buffer
-                    if sample_primitive_action == 'push':
-                        trainer.predicted_value_log[sample_iteration] = [np.max(sample_push_predictions)]
-                        # trainer.label_value_log[sample_iteration] = [new_sample_label_value]
-                    elif sample_primitive_action == 'grasp':
-                        trainer.predicted_value_log[sample_iteration] = [np.max(sample_grasp_predictions)]
-                        # trainer.label_value_log[sample_iteration] = [new_sample_label_value]
+                    # if sample_primitive_action == 'push':
+                    #     trainer.predicted_value_log[sample_iteration] = [np.max(sample_push_predictions)]
+                    #     # trainer.label_value_log[sample_iteration] = [new_sample_label_value]
+                    # elif sample_primitive_action == 'grasp':
+                    #     trainer.predicted_value_log[sample_iteration] = [np.max(sample_grasp_predictions)]
+                    #     # trainer.label_value_log[sample_iteration] = [new_sample_label_value]
 
-                else:
-                    print('Not enough prior training samples. Skipping experience replay.')
+                # else:
+                #     print('Not enough prior training samples. Skipping experience replay.')
 
             # Save model snapshot
-            if not is_testing:
-                logger.save_backup_model(trainer.model, method) 
-                if trainer.iteration % 50 == 0:
-                    logger.save_model(trainer.iteration, trainer.model, method)
-                    if trainer.use_cuda:
-                        trainer.model = trainer.model.cuda()
+            # if not is_testing:
+            #     logger.save_backup_model(trainer.model, method) 
+            #     if trainer.iteration % 50 == 0:
+            #         logger.save_model(trainer.iteration, trainer.model, method)
+            #         if trainer.use_cuda:
+            #             trainer.model = trainer.model.cuda()
 
         # Sync both action thread and training thread
         import ipdb; ipdb.set_trace()
@@ -460,12 +465,12 @@ def main(args):
         prev_color_img = color_img.copy()
         prev_depth_img = depth_img.copy()
         prev_obj2segmentation_img = {key: img.copy() for key, img in obj2segmented_img.items()}
-        # prev_color_heightmap = color_heightmap.copy()
-        # prev_depth_heightmap = depth_heightmap.copy()
+        prev_color_heightmap = color_heightmap.copy()
+        prev_depth_heightmap = depth_heightmap.copy()
         # prev_valid_depth_heightmap = valid_depth_heightmap.copy()
         # prev_push_success = nonlocal_variables['push_success']
         # prev_grasp_success = nonlocal_variables['grasp_success']
-        # prev_primitive_action = nonlocal_variables['primitive_action']
+        prev_primitive_action = nonlocal_variables['primitive_action']
         # prev_push_predictions = push_predictions.copy()
         # prev_grasp_predictions = grasp_predictions.copy()
         prev_best_pix_ind = nonlocal_variables['best_pix_ind']
