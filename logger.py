@@ -4,6 +4,7 @@ import os
 import numpy as np
 import cv2
 import torch 
+import csv
 # import h5py 
 
 class Logger():
@@ -77,6 +78,12 @@ class Logger():
         cv2.imwrite(os.path.join(self.color_heightmaps_directory, '%06d.%s.color.png' % (iteration, mode)), color_heightmap)
         depth_heightmap = np.round(depth_heightmap * 100000).astype(np.uint16) # Save depth in 1e-5 meters
         cv2.imwrite(os.path.join(self.depth_heightmaps_directory, '%06d.%s.depth.png' % (iteration, mode)), depth_heightmap)
+
+    def save_best_pix_ind(self, iteration, best_pix_ind):
+        filepath = os.path.join(self.segmented_images_directory, 'best_pix_indices.csv')
+        with open(filepath, 'a') as f:
+            writer = csv.writer(f)
+            writer.writerow([iteration, *best_pix_ind])
     
     def write_to_log(self, log_name, log):
         np.savetxt(os.path.join(self.transitions_directory, '%s.log.txt' % log_name), log, delimiter=' ')
@@ -112,3 +119,8 @@ class Logger():
         cv2.imwrite(os.path.join(self.transitions_directory, 'data', '%06d.1.depth.png' % (iteration)), next_depth_heightmap)
         # np.savetxt(os.path.join(self.transitions_directory, '%06d.action.txt' % (iteration)), [1 if (transition.action == 'grasp') else 0], delimiter=' ')
         # np.savetxt(os.path.join(self.transitions_directory, '%06d.reward.txt' % (iteration)), [reward_value], delimiter=' ')
+
+    def save_action(self, iteration, action):
+        '''save action (nonlocal_variables['best_pix_ind'])'''
+
+

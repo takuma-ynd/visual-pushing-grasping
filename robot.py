@@ -3,6 +3,7 @@ import select
 import struct
 import time
 import os
+import random
 import numpy as np
 import collections
 import utils
@@ -180,37 +181,6 @@ class Robot(object):
         # self.bg_color_img, self.bg_depth_img = self.get_camera_data()
         # self.bg_depth_img = self.bg_depth_img * self.cam_depth_scale
 
-    def add_two_objects(self):
-        # Add each object to robot workspace at x,y location and orientation (random or pre-loaded)
-        self.object_handles = []
-        sim_obj_handles = []
-        obj_mesh_ind = [0, 0]
-        for object_idx in range(len(obj_mesh_ind)):
-        # for object_idx in range(len(self.obj_mesh_ind)):
-            curr_mesh_file = os.path.join(self.obj_mesh_dir, self.mesh_list[obj_mesh_ind[object_idx]])
-            if self.is_testing and self.test_preset_cases:
-                curr_mesh_file = self.test_obj_mesh_files[object_idx]
-            curr_shape_name = 'shape_%02d' % object_idx
-            drop_x = (self.workspace_limits[0][1] - self.workspace_limits[0][0] - 0.2) * np.random.random_sample() + self.workspace_limits[0][0] + 0.1
-            drop_y = (self.workspace_limits[1][1] - self.workspace_limits[1][0] - 0.2) * np.random.random_sample() + self.workspace_limits[1][0] + 0.1
-            object_position = [drop_x, drop_y, 0.15]
-            object_orientation = [2*np.pi*np.random.random_sample(), 2*np.pi*np.random.random_sample(), 2*np.pi*np.random.random_sample()]
-            if self.is_testing and self.test_preset_cases:
-                object_position = [self.test_obj_positions[object_idx][0], self.test_obj_positions[object_idx][1], self.test_obj_positions[object_idx][2]]
-                object_orientation = [self.test_obj_orientations[object_idx][0], self.test_obj_orientations[object_idx][1], self.test_obj_orientations[object_idx][2]]
-            object_color = [self.obj_mesh_color[object_idx][0], self.obj_mesh_color[object_idx][1], self.obj_mesh_color[object_idx][2]]
-            print('dropping object {} at {} with rot {}'.format(object_idx, (drop_x, drop_y), object_orientation))
-            ret_resp,ret_ints,ret_floats,ret_strings,ret_buffer = vrep.simxCallScriptFunction(self.sim_client, 'remoteApiCommandServer',vrep.sim_scripttype_childscript,'importShape',[0,0,255,0], object_position + object_orientation + object_color, [curr_mesh_file, curr_shape_name], bytearray(), vrep.simx_opmode_blocking)
-            if ret_resp == 8:
-                print('Failed to add new objects to simulation. Please restart.')
-                exit()
-            curr_shape_handle = ret_ints[0]
-            self.object_handles.append(curr_shape_handle)
-            if not (self.is_testing and self.test_preset_cases):
-                time.sleep(2)
-        self.prev_obj_positions = []
-        self.obj_positions = []
-
     def add_objects(self):
 
         # Add each object to robot workspace at x,y location and orientation (random or pre-loaded)
@@ -228,7 +198,10 @@ class Robot(object):
             if self.is_testing and self.test_preset_cases:
                 object_position = [self.test_obj_positions[object_idx][0], self.test_obj_positions[object_idx][1], self.test_obj_positions[object_idx][2]]
                 object_orientation = [self.test_obj_orientations[object_idx][0], self.test_obj_orientations[object_idx][1], self.test_obj_orientations[object_idx][2]]
-            object_color = [self.obj_mesh_color[object_idx][0], self.obj_mesh_color[object_idx][1], self.obj_mesh_color[object_idx][2]]
+            # object_color = [self.obj_mesh_color[object_idx][0], self.obj_mesh_color[object_idx][1], self.obj_mesh_color[object_idx][2]]
+            # randomly sample from the color preset for each time.
+            color_idx = random.randint(0, self.color_space.shape[0] - 1)
+            object_color = [self.color_space[color_idx][0], self.color_space[color_idx][1], self.color_space[color_idx][2]]
             ret_resp,ret_ints,ret_floats,ret_strings,ret_buffer = vrep.simxCallScriptFunction(self.sim_client, 'remoteApiCommandServer',vrep.sim_scripttype_childscript,'importShape',[0,0,255,0], object_position + object_orientation + object_color, [curr_mesh_file, curr_shape_name], bytearray(), vrep.simx_opmode_blocking)
             if ret_resp == 8:
                 print('Failed to add new objects to simulation. Please restart.')
@@ -390,22 +363,25 @@ class Robot(object):
             # aux_packets returns the list of numbers each corresponding to an object.
             sim_ret, detection_state, aux_packets = vrep.simxReadVisionSensor(self.sim_client, self.segment_cam_handle, vrep.simx_opmode_blocking)
 
+            print('--- handling raw data ---')
             print('aux_packets', aux_packets)
             print('object_handles', self.object_handles)
             # Get color image from simulation
             sim_ret, resolution, raw_image = vrep.simxGetVisionSensorImage(self.sim_client, self.segment_cam_handle, 0, vrep.simx_opmode_blocking)
             color_img = np.asarray(raw_image)
             color_img.shape = (resolution[1], resolution[0], 3)
-            color_img = color_img.astype(np.float)/255
-            color_img[color_img < 0] += 1
-            color_img *= 255
+            color_img[color_img < 0] += 255 + 1
+            # color_img = color_img.astype(np.float)/255
+            # color_img[color_img < 0] += 1
+            # color_img *= 255
+            color_img.astype(int)
             print(collections.Counter(color_img[:,:,0].reshape(-1)))
             print(collections.Counter(color_img[:,:,1].reshape(-1)))
             print(collections.Counter(color_img[:,:,2].reshape(-1)))
 
-            segmentation = color_img[:, :, 0].astype(int).copy()
-            segmentation += color_img[:, :, 1].astype(int).copy() * 256
-            segmentation += color_img[:, :, 2].astype(int).copy() * 256 * 256
+            segmentation = color_img[:, :, 0].copy()
+            segmentation += color_img[:, :, 1].copy() * 256
+            segmentation += color_img[:, :, 2].copy() * 256 * 256
             segmentation = np.fliplr(segmentation)  # I don't know the necessity of this...
             print('segmentation', collections.Counter(segmentation.reshape(-1)))
 
@@ -429,9 +405,9 @@ class Robot(object):
         '''given segmentation and color image, return segmented image for each object as a dictionary of {object handler: segmented image}'''
         obj2segmented_img = {}
         if len(segment_img.shape) == 2:
-            segment_img = segment_img[:, :, np.newaxis]
+            segment_img = segment_img[:, :, np.newaxis].astype(np.uint8)
         for obj in self.object_handles:
-            obj_region = (segment_img == obj - 1)  # NOTE: I don't know if "-1" makes it work or maybe it's still buggy.
+            obj_region = (segment_img == obj)  # NOTE: sometimes obj - 1 works correctly... this is misterious...
             obj2segmented_img[obj] = (obj_region * color_img).astype(np.uint8)
 
         return obj2segmented_img

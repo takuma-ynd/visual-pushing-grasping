@@ -30,8 +30,8 @@ def main(args):
     rtc_host_ip = args.rtc_host_ip if not is_sim else None # IP and port to robot arm as real-time client (UR5)
     rtc_port = args.rtc_port if not is_sim else None
     if is_sim:
-        # workspace_limits = np.asarray([[-0.724, -0.276], [-0.224, 0.224], [-0.0001, 0.4]]) # Cols: min max, Rows: x y z (define workspace limits in robot coordinates)
-        workspace_limits = np.asarray([[-0.524, -0.276], [-0.224, 0.224], [-0.0001, 0.4]]) # Cols: min max, Rows: x y z (define workspace limits in robot coordinates)
+        workspace_limits = np.asarray([[-0.724, -0.276], [-0.224, 0.224], [-0.0001, 0.4]]) # Cols: min max, Rows: x y z (define workspace limits in robot coordinates)
+        # workspace_limits = np.asarray([[-0.524, -0.276], [-0.224, 0.224], [-0.0001, 0.4]]) # Cols: min max, Rows: x y z (define workspace limits in robot coordinates)
     else:
         workspace_limits = np.asarray([[0.3, 0.748], [-0.224, 0.224], [-0.255, -0.1]]) # Cols: min max, Rows: x y z (define workspace limits in robot coordinates)
     heightmap_resolution = args.heightmap_resolution # Meters per pixel of heightmap
@@ -250,6 +250,8 @@ def main(args):
     # -------------------------------------------------------------
     # -------------------------------------------------------------
 
+    n_trials = 10
+    counter = 0
 
     # Start main training/testing loop
     while True:
@@ -281,22 +283,29 @@ def main(args):
         valid_depth_heightmap[np.isnan(valid_depth_heightmap)] = 0
 
         # Save RGB-D images and RGB-D heightmaps
+        print('trainer.iteration:', trainer.iteration)
+        print('counter', counter)
         logger.save_images(trainer.iteration, color_img, depth_img, '0')
         logger.save_heightmaps(trainer.iteration, color_heightmap, valid_depth_heightmap, '0')
         logger.save_segmented_images(trainer.iteration, obj2segmented_img, '0')
+        counter += 1
 
         # Reset simulation or pause real-world training if table is empty
         stuff_count = np.zeros(valid_depth_heightmap.shape)
         stuff_count[valid_depth_heightmap > 0.02] = 1
         empty_threshold = 300
         if is_sim and is_testing:
-            empty_threshold = 10  
-        if np.sum(stuff_count) < empty_threshold or (is_sim and no_change_count[0] + no_change_count[1] > 10):
+            empty_threshold = 10
+        if np.sum(stuff_count) < empty_threshold or (is_sim and no_change_count[0] + no_change_count[1] > 10) or counter % n_trials == 0:
+            if counter % n_trials == 0:
+                print('restarting sim due to counter % n_trials == 0')
+
             no_change_count = [0, 0]
             if is_sim:
                 print('Not enough objects in view (value: %d)! Repositioning objects.' % (np.sum(stuff_count)))
                 robot.restart_sim()
                 robot.add_objects()
+                counter = 0
                 if is_testing: # If at end of test run, re-load original weights (before test run)
                     print('loading model...')
                     trainer.model.load_state_dict(torch.load(snapshot_file))
@@ -324,6 +333,7 @@ def main(args):
             # execute pushing at a heuristically calculated position
             nonlocal_variables['best_pix_ind'] = trainer.push_heuristic(valid_depth_heightmap)
             print('best_pix_ind', nonlocal_variables['best_pix_ind'])
+            logger.save_best_pix_ind(trainer.iteration, nonlocal_variables['best_pix_ind'])
             # nonlocal_variables['best_pix_ind'] = (11, 153, 120)
             # print('push_predictions', push_predictions)
             # print('grasp_predictions', grasp_predictions)
@@ -454,7 +464,7 @@ def main(args):
             #             trainer.model = trainer.model.cuda()
 
         # Sync both action thread and training thread
-        import ipdb; ipdb.set_trace()
+        # import ipdb; ipdb.set_trace()
         while nonlocal_variables['executing_action']:
             time.sleep(0.01)
 
