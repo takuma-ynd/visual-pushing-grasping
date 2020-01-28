@@ -252,6 +252,7 @@ def main(args):
 
     n_trials = 10
     counter = 0
+    reset_counter = 0
 
     # Start main training/testing loop
     while True:
@@ -282,12 +283,6 @@ def main(args):
         valid_depth_heightmap = depth_heightmap.copy()
         valid_depth_heightmap[np.isnan(valid_depth_heightmap)] = 0
 
-        # Save RGB-D images and RGB-D heightmaps
-        print('trainer.iteration:', trainer.iteration)
-        print('counter', counter)
-        logger.save_images(trainer.iteration, color_img, depth_img, '0')
-        logger.save_heightmaps(trainer.iteration, color_heightmap, valid_depth_heightmap, '0')
-        logger.save_segmented_images(trainer.iteration, obj2segmented_img, '0')
         counter += 1
 
         # Reset simulation or pause real-world training if table is empty
@@ -306,6 +301,7 @@ def main(args):
                 robot.restart_sim()
                 robot.add_objects()
                 counter = 0
+                reset_counter += 1
                 if is_testing: # If at end of test run, re-load original weights (before test run)
                     print('loading model...')
                     trainer.model.load_state_dict(torch.load(snapshot_file))
@@ -322,6 +318,14 @@ def main(args):
                 exit_called = True # Exit after training thread (backprop and saving labels)
             continue
 
+        # Save RGB-D images and RGB-D heightmaps
+        print('trainer.iteration:', trainer.iteration)
+        print('counter', counter)
+        print('reset_counter', reset_counter)
+        logger.save_images(trainer.iteration, color_img, depth_img, '0', reset_counter=reset_counter)
+        logger.save_heightmaps(trainer.iteration, color_heightmap, valid_depth_heightmap, '0', reset_counter=reset_counter)
+        logger.save_segmented_images(trainer.iteration, obj2segmented_img, '0', reset_counter=reset_counter)
+
         if not exit_called: 
 
             # Run forward pass with network to get affordances
@@ -333,7 +337,7 @@ def main(args):
             # execute pushing at a heuristically calculated position
             nonlocal_variables['best_pix_ind'] = trainer.push_heuristic(valid_depth_heightmap)
             print('best_pix_ind', nonlocal_variables['best_pix_ind'])
-            logger.save_best_pix_ind(trainer.iteration, nonlocal_variables['best_pix_ind'])
+            logger.save_best_pix_ind(trainer.iteration, nonlocal_variables['best_pix_ind'], reset_counter=reset_counter)
             # nonlocal_variables['best_pix_ind'] = (11, 153, 120)
             # print('push_predictions', push_predictions)
             # print('grasp_predictions', grasp_predictions)
