@@ -138,10 +138,13 @@ class Robot(object):
             self.cam_depth_scale = np.loadtxt('real/camera_depth_scale.txt', delimiter=' ')
 
 
-    def setup_sim_camera(self):
+    def setup_sim_camera(self, ortho=True):
 
         # Get handle to camera
-        sim_ret, self.cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_persp', vrep.simx_opmode_blocking)
+        if ortho:
+            sim_ret, self.cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_ortho', vrep.simx_opmode_blocking)
+        else:
+            sim_ret, self.cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_persp', vrep.simx_opmode_blocking)
 
         # Get camera pose and intrinsics in simulation
         sim_ret, cam_position = vrep.simxGetObjectPosition(self.sim_client, self.cam_handle, -1, vrep.simx_opmode_blocking)
@@ -159,10 +162,13 @@ class Robot(object):
         self.bg_color_img, self.bg_depth_img = self.get_camera_data()
         self.bg_depth_img = self.bg_depth_img * self.cam_depth_scale
 
-    def setup_sim_segmentation_camera(self):
+    def setup_sim_segmentation_camera(self, ortho=True):
 
         # Get handle to camera
-        sim_ret, self.segment_cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_persp_segmentation', vrep.simx_opmode_blocking)
+        if ortho:
+            sim_ret, self.segment_cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_ortho_segmentation', vrep.simx_opmode_blocking)
+        else:
+            sim_ret, self.segment_cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_persp_segmentation', vrep.simx_opmode_blocking)
 
         # NOTE: camera intrinsics are the same as RGB one
         # # Get camera pose and intrinsics in simulation
@@ -180,6 +186,7 @@ class Robot(object):
         # # Get background image
         # self.bg_color_img, self.bg_depth_img = self.get_camera_data()
         # self.bg_depth_img = self.bg_depth_img * self.cam_depth_scale
+
 
     def add_objects(self):
 
@@ -374,7 +381,7 @@ class Robot(object):
             # color_img = color_img.astype(np.float)/255
             # color_img[color_img < 0] += 1
             # color_img *= 255
-            color_img.astype(int)
+            color_img.astype(np.int64)
             print(collections.Counter(color_img[:,:,0].reshape(-1)))
             print(collections.Counter(color_img[:,:,1].reshape(-1)))
             print(collections.Counter(color_img[:,:,2].reshape(-1)))
@@ -405,7 +412,7 @@ class Robot(object):
         '''given segmentation and color image, return segmented image for each object as a dictionary of {object handler: segmented image}'''
         obj2segmented_img = {}
         if len(segment_img.shape) == 2:
-            segment_img = segment_img[:, :, np.newaxis].astype(np.uint8)
+            segment_img = segment_img[:, :, np.newaxis].astype(np.int64)
         for obj in self.object_handles:
             obj_region = (segment_img == obj)  # NOTE: sometimes obj - 1 works correctly... this is misterious...
             obj2segmented_img[obj] = (obj_region * color_img).astype(np.uint8)
@@ -874,6 +881,8 @@ class Robot(object):
             move_direction = np.asarray([tool_position[0] - UR5_target_position[0], tool_position[1] - UR5_target_position[1], tool_position[2] - UR5_target_position[2]])
             move_magnitude = np.linalg.norm(move_direction)
             move_step = 0.05*move_direction/move_magnitude
+            print('move_direction', move_direction[0])
+            print('move_step', move_direction[0])
             num_move_steps = int(np.floor(move_direction[0]/move_step[0]))
 
             # Compute gripper orientation and rotation increments
