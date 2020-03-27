@@ -322,9 +322,10 @@ def main(args):
         print('trainer.iteration:', trainer.iteration)
         print('counter', counter)
         print('reset_counter', reset_counter)
+        print('saving_images...')
         logger.save_images(trainer.iteration, color_img, depth_img, '0', reset_counter=reset_counter)
         logger.save_heightmaps(trainer.iteration, color_heightmap, valid_depth_heightmap, '0', reset_counter=reset_counter)
-        logger.save_segmented_images(trainer.iteration, obj2segmented_img, '0', reset_counter=reset_counter)
+        logger.save_segmented_images(trainer.iteration, counter-1, obj2segmented_img, reset_counter=reset_counter)
 
         if not exit_called: 
 
@@ -337,7 +338,7 @@ def main(args):
             # execute pushing at a heuristically calculated position
             nonlocal_variables['best_pix_ind'] = trainer.push_heuristic(valid_depth_heightmap)
             print('best_pix_ind', nonlocal_variables['best_pix_ind'])
-            logger.save_best_pix_ind(trainer.iteration, nonlocal_variables['best_pix_ind'], reset_counter=reset_counter)
+            logger.save_best_pix_ind(trainer.iteration, counter - 1, nonlocal_variables['best_pix_ind'], reset_counter=reset_counter)
             # nonlocal_variables['best_pix_ind'] = (11, 153, 120)
             # print('push_predictions', push_predictions)
             # print('grasp_predictions', grasp_predictions)

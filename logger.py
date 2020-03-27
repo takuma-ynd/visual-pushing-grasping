@@ -68,10 +68,10 @@ class Logger():
         depth_image = np.round(depth_image * 10000).astype(np.uint16) # Save depth in 1e-4 meters
         cv2.imwrite(os.path.join(self.depth_images_directory, '%06d.%s.%03d.depth.png' % (iteration, mode, reset_counter)), depth_image)
 
-    def save_segmented_images(self, iteration, obj2segmented_img, mode, reset_counter=0):
+    def save_segmented_images(self, iteration, local_count, obj2segmented_img, reset_counter=0):
         for obj, segmented_img in obj2segmented_img.items():
             color_image = cv2.cvtColor(segmented_img, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(os.path.join(self.segmented_images_directory, '%06d.%s.%03d.%04d.color.png' % (iteration, mode, reset_counter, obj)), color_image)
+            cv2.imwrite(os.path.join(self.segmented_images_directory, '%06d.%03d.%03d.%04d.color.png' % (iteration, local_count, reset_counter, obj)), color_image)
     
     def save_heightmaps(self, iteration, color_heightmap, depth_heightmap, mode, reset_counter=0):
         color_heightmap = cv2.cvtColor(color_heightmap, cv2.COLOR_RGB2BGR)
@@ -79,11 +79,11 @@ class Logger():
         depth_heightmap = np.round(depth_heightmap * 100000).astype(np.uint16) # Save depth in 1e-5 meters
         cv2.imwrite(os.path.join(self.depth_heightmaps_directory, '%06d.%s.%03d.depth.png' % (iteration, mode, reset_counter)), depth_heightmap)
 
-    def save_best_pix_ind(self, iteration, best_pix_ind, reset_counter=0):
+    def save_best_pix_ind(self, iteration, local_count, best_pix_ind, reset_counter=0):
         filepath = os.path.join(self.segmented_images_directory, 'best_pix_indices.csv')
         with open(filepath, 'a') as f:
             writer = csv.writer(f)
-            writer.writerow([iteration, reset_counter, *best_pix_ind])
+            writer.writerow([iteration, local_count, reset_counter, *best_pix_ind])
     
     def write_to_log(self, log_name, log):
         np.savetxt(os.path.join(self.transitions_directory, '%s.log.txt' % log_name), log, delimiter=' ')

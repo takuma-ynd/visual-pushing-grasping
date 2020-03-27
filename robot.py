@@ -347,6 +347,10 @@ class Robot(object):
             color_img *= 255
             color_img = np.fliplr(color_img)
             color_img = color_img.astype(np.uint8)
+            # TEMP
+            # cv2.imshow('fucking_color_image',cv2.cvtColor(color_img, cv2.COLOR_RGB2BGR))
+            # cv2.waitKey(0)
+            # cv2.destroyAllWindows()
             
             # Get depth image from simulation
             sim_ret, resolution, depth_buffer = vrep.simxGetVisionSensorDepthBuffer(self.sim_client, self.cam_handle, vrep.simx_opmode_blocking)
@@ -883,7 +887,11 @@ class Robot(object):
             move_step = 0.05*move_direction/move_magnitude
             print('move_direction', move_direction[0])
             print('move_step', move_direction[0])
-            num_move_steps = int(np.floor(move_direction[0]/move_step[0]))
+            # TEMP: handle div 0 by a trick
+            if move_direction[0] == 0.0 and move_step[0] == 0.0:
+                num_move_steps = int(np.floor(1))
+            else:
+                num_move_steps = int(np.floor(move_direction[0]/move_step[0]))
 
             # Compute gripper orientation and rotation increments
             sim_ret, gripper_orientation = vrep.simxGetObjectOrientation(self.sim_client, self.UR5_target_handle, -1, vrep.simx_opmode_blocking)
