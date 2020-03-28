@@ -889,7 +889,7 @@ class Robot(object):
             print('move_step', move_direction[0])
             # TEMP: handle div 0 by a trick
             if move_direction[0] == 0.0 and move_step[0] == 0.0:
-                num_move_steps = int(np.floor(1))
+                num_move_steps = int(np.floor(0))
             else:
                 num_move_steps = int(np.floor(move_direction[0]/move_step[0]))
 
@@ -912,7 +912,7 @@ class Robot(object):
             self.move_to(position, None)
 
             # Compute target location (push to the right)
-            push_length = 0.1
+            push_length = 0.05  // original value: 0.1
             target_x = min(max(position[0] + push_direction[0]*push_length, workspace_limits[0][0]), workspace_limits[0][1])
             target_y = min(max(position[1] + push_direction[1]*push_length, workspace_limits[1][0]), workspace_limits[1][1])
             push_length = np.sqrt(np.power(target_x-position[0],2)+np.power(target_y-position[1],2))
