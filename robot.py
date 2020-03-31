@@ -39,7 +39,10 @@ class Robot(object):
             self.mesh_list = os.listdir(self.obj_mesh_dir)
 
             # Randomly choose objects to add to scene
-            self.obj_mesh_ind = np.random.randint(0, len(self.mesh_list), size=self.num_obj)
+            # self.obj_mesh_ind = np.random.randint(0, len(self.mesh_list), size=self.num_obj)
+
+            # TEMP: always use obj 0.
+            self.obj_mesh_ind = np.zeros(self.num_obj)
             self.obj_mesh_color = self.color_space[np.asarray(range(self.num_obj)) % 10, :]
 
             # Make sure to have the server side running in V-REP: 
@@ -205,10 +208,7 @@ class Robot(object):
             if self.is_testing and self.test_preset_cases:
                 object_position = [self.test_obj_positions[object_idx][0], self.test_obj_positions[object_idx][1], self.test_obj_positions[object_idx][2]]
                 object_orientation = [self.test_obj_orientations[object_idx][0], self.test_obj_orientations[object_idx][1], self.test_obj_orientations[object_idx][2]]
-            # object_color = [self.obj_mesh_color[object_idx][0], self.obj_mesh_color[object_idx][1], self.obj_mesh_color[object_idx][2]]
-            # randomly sample from the color preset for each time.
-            color_idx = random.randint(0, self.color_space.shape[0] - 1)
-            object_color = [self.color_space[color_idx][0], self.color_space[color_idx][1], self.color_space[color_idx][2]]
+            object_color = [self.obj_mesh_color[object_idx][0], self.obj_mesh_color[object_idx][1], self.obj_mesh_color[object_idx][2]]
             ret_resp,ret_ints,ret_floats,ret_strings,ret_buffer = vrep.simxCallScriptFunction(self.sim_client, 'remoteApiCommandServer',vrep.sim_scripttype_childscript,'importShape',[0,0,255,0], object_position + object_orientation + object_color, [curr_mesh_file, curr_shape_name], bytearray(), vrep.simx_opmode_blocking)
             if ret_resp == 8:
                 print('Failed to add new objects to simulation. Please restart.')
