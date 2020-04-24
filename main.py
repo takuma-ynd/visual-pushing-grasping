@@ -105,16 +105,16 @@ def main(args):
                 # predicted_value = np.max(push_predictions)
 
                 # Compute 3D position of pixel
-                print('Action: %s at (%d, %d, %d)' % (nonlocal_variables['primitive_action'], nonlocal_variables['best_pix_ind'][0], nonlocal_variables['best_pix_ind'][1], nonlocal_variables['best_pix_ind'][2]))
+                print('Action: %s at (%f, %f, %f)' % (nonlocal_variables['primitive_action'], nonlocal_variables['best_pix_ind'][0], nonlocal_variables['best_pix_ind'][1], nonlocal_variables['best_pix_ind'][2]))
                 best_rotation_angle = np.deg2rad(nonlocal_variables['best_pix_ind'][0]*(360.0/trainer.model.num_rotations))
                 best_pix_x = nonlocal_variables['best_pix_ind'][2]
                 best_pix_y = nonlocal_variables['best_pix_ind'][1]
-                primitive_position = [best_pix_x * heightmap_resolution + workspace_limits[0][0], best_pix_y * heightmap_resolution + workspace_limits[1][0], valid_depth_heightmap[best_pix_y][best_pix_x] + workspace_limits[2][0]]
+                primitive_position = [best_pix_x * heightmap_resolution + workspace_limits[0][0], best_pix_y * heightmap_resolution + workspace_limits[1][0], valid_depth_heightmap[int(best_pix_y)][int(best_pix_x)] + workspace_limits[2][0]]
 
                 # If pushing, adjust start position, and make sure z value is safe and not too low
                 finger_width = 0.02
                 safe_kernel_width = int(np.round((finger_width/2)/heightmap_resolution))
-                local_region = valid_depth_heightmap[max(best_pix_y - safe_kernel_width, 0):min(best_pix_y + safe_kernel_width + 1, valid_depth_heightmap.shape[0]), max(best_pix_x - safe_kernel_width, 0):min(best_pix_x + safe_kernel_width + 1, valid_depth_heightmap.shape[1])]
+                local_region = valid_depth_heightmap[max(int(best_pix_y) - safe_kernel_width, 0):min(int(best_pix_y) + safe_kernel_width + 1, valid_depth_heightmap.shape[0]), max(int(best_pix_x) - safe_kernel_width, 0):min(int(best_pix_x) + safe_kernel_width + 1, valid_depth_heightmap.shape[1])]
                 if local_region.size == 0:
                     safe_z_position = workspace_limits[2][0]
                 else:
@@ -141,6 +141,7 @@ def main(args):
             if nonlocal_variables['executing_action']:
 
                 # Determine whether grasping or pushing should be executed based on network predictions
+                # NOTE: conf ==> confidence
                 best_push_conf = np.max(push_predictions)
                 best_grasp_conf = np.max(grasp_predictions)
                 print('Primitive confidence scores: %f (push), %f (grasp)' % (best_push_conf, best_grasp_conf))
@@ -166,8 +167,9 @@ def main(args):
                 # NOTE: typically not necessary and can reduce final performance.
                 if heuristic_bootstrap and nonlocal_variables['primitive_action'] == 'push' and no_change_count[0] >= 2:
                     print('Change not detected for more than two pushes. Running heuristic pushing.')
-                    nonlocal_variables['best_pix_ind'] = trainer.push_heuristic(valid_depth_heightmap)
+                    nonlocal_variables['best_pix_ind'] = trainer.push_heuristic(valid_depth_heightmap, continuous=True)
                     no_change_count[0] = 0
+                    import ipdb; ipdb.set_trace()
                     predicted_value = push_predictions[nonlocal_variables['best_pix_ind']]
                     use_heuristic = True
                 elif heuristic_bootstrap and nonlocal_variables['primitive_action'] == 'grasp' and no_change_count[1] >= 2:
@@ -194,7 +196,7 @@ def main(args):
                 logger.write_to_log('predicted-value', trainer.predicted_value_log)
 
                 # Compute 3D position of pixel
-                print('Action: %s at (%d, %d, %d)' % (nonlocal_variables['primitive_action'], nonlocal_variables['best_pix_ind'][0], nonlocal_variables['best_pix_ind'][1], nonlocal_variables['best_pix_ind'][2]))
+                print('Action: %s at (%f, %f, %f)' % (nonlocal_variables['primitive_action'], nonlocal_variables['best_pix_ind'][0], nonlocal_variables['best_pix_ind'][1], nonlocal_variables['best_pix_ind'][2]))
                 best_rotation_angle = np.deg2rad(nonlocal_variables['best_pix_ind'][0]*(360.0/trainer.model.num_rotations))
                 best_pix_x = nonlocal_variables['best_pix_ind'][2]
                 best_pix_y = nonlocal_variables['best_pix_ind'][1]
@@ -336,7 +338,7 @@ def main(args):
             # NOTE: first index of push_predictions corresponds to pushing direction (orientation)
             # push_predictions = (11, 153, 120)
             # execute pushing at a heuristically calculated position
-            nonlocal_variables['best_pix_ind'] = trainer.push_heuristic(valid_depth_heightmap)
+            nonlocal_variables['best_pix_ind'] = trainer.push_heuristic(valid_depth_heightmap, continuous=True)
             print('best_pix_ind', nonlocal_variables['best_pix_ind'])
             logger.save_best_pix_ind(trainer.iteration, counter - 1, nonlocal_variables['best_pix_ind'], reset_counter=reset_counter)
             # nonlocal_variables['best_pix_ind'] = (11, 153, 120)

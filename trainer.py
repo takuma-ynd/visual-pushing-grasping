@@ -1,5 +1,6 @@
 import os
 import time
+import random
 import numpy as np
 import cv2
 import torch
@@ -399,7 +400,7 @@ class Trainer(object):
         return canvas
 
 
-    def push_heuristic(self, depth_heightmap):
+    def push_heuristic(self, depth_heightmap, continuous=False):
         # TODO: add sampling feature? (sample according to the heuristic score but not take max)
         # NOTE: depth_heightmap.shape == (224, 224)
 
@@ -418,9 +419,13 @@ class Trainer(object):
             if rotate_idx == 0:
                 push_predictions = tmp_push_predictions
             else:
+                # NOTE: we definitely go through rotate_idx = 0 first. Thus "push_predictions" will be defined anyway
                 push_predictions = np.concatenate((push_predictions, tmp_push_predictions), axis=0)
 
         best_pix_ind = np.unravel_index(np.argmax(push_predictions), push_predictions.shape)
+        if continuous:
+            # add a noise ranging from -0.5 to 0.5 to make it continuous
+            best_pix_ind = tuple([e - 0.5 + random.random() for e in best_pix_ind])
         return best_pix_ind
 
 
