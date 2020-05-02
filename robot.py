@@ -39,7 +39,10 @@ class Robot(object):
             self.mesh_list = os.listdir(self.obj_mesh_dir)
 
             # Randomly choose objects to add to scene
-            self.obj_mesh_ind = np.random.randint(0, len(self.mesh_list), size=self.num_obj)
+            # self.obj_mesh_ind = np.random.randint(0, len(self.mesh_list), size=self.num_obj)
+
+            # TEMP: always use obj 0.
+            self.obj_mesh_ind = np.zeros(self.num_obj)
             self.obj_mesh_color = self.color_space[np.asarray(range(self.num_obj)) % 10, :]
 
             # Make sure to have the server side running in V-REP: 
@@ -205,10 +208,7 @@ class Robot(object):
             if self.is_testing and self.test_preset_cases:
                 object_position = [self.test_obj_positions[object_idx][0], self.test_obj_positions[object_idx][1], self.test_obj_positions[object_idx][2]]
                 object_orientation = [self.test_obj_orientations[object_idx][0], self.test_obj_orientations[object_idx][1], self.test_obj_orientations[object_idx][2]]
-            # object_color = [self.obj_mesh_color[object_idx][0], self.obj_mesh_color[object_idx][1], self.obj_mesh_color[object_idx][2]]
-            # randomly sample from the color preset for each time.
-            color_idx = random.randint(0, self.color_space.shape[0] - 1)
-            object_color = [self.color_space[color_idx][0], self.color_space[color_idx][1], self.color_space[color_idx][2]]
+            object_color = [self.obj_mesh_color[object_idx][0], self.obj_mesh_color[object_idx][1], self.obj_mesh_color[object_idx][2]]
             ret_resp,ret_ints,ret_floats,ret_strings,ret_buffer = vrep.simxCallScriptFunction(self.sim_client, 'remoteApiCommandServer',vrep.sim_scripttype_childscript,'importShape',[0,0,255,0], object_position + object_orientation + object_color, [curr_mesh_file, curr_shape_name], bytearray(), vrep.simx_opmode_blocking)
             if ret_resp == 8:
                 print('Failed to add new objects to simulation. Please restart.')
@@ -889,7 +889,7 @@ class Robot(object):
             print('move_step', move_direction[0])
             # TEMP: handle div 0 by a trick
             if move_direction[0] == 0.0 and move_step[0] == 0.0:
-                num_move_steps = int(np.floor(1))
+                num_move_steps = int(np.floor(0))
             else:
                 num_move_steps = int(np.floor(move_direction[0]/move_step[0]))
 
@@ -912,7 +912,7 @@ class Robot(object):
             self.move_to(position, None)
 
             # Compute target location (push to the right)
-            push_length = 0.1
+            push_length = 0.05  // original value: 0.1
             target_x = min(max(position[0] + push_direction[0]*push_length, workspace_limits[0][0]), workspace_limits[0][1])
             target_y = min(max(position[1] + push_direction[1]*push_length, workspace_limits[1][0]), workspace_limits[1][1])
             push_length = np.sqrt(np.power(target_x-position[0],2)+np.power(target_y-position[1],2))
