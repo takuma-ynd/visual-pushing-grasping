@@ -42,7 +42,7 @@ class Robot(object):
             # self.obj_mesh_ind = np.random.randint(0, len(self.mesh_list), size=self.num_obj)
 
             # TEMP: always use obj 0.
-            self.obj_mesh_ind = np.zeros(self.num_obj)
+            self.obj_mesh_ind = np.zeros(self.num_obj, dtype=int)
             self.obj_mesh_color = self.color_space[np.asarray(range(self.num_obj)) % 10, :]
 
             # Make sure to have the server side running in V-REP: 
@@ -912,7 +912,7 @@ class Robot(object):
             self.move_to(position, None)
 
             # Compute target location (push to the right)
-            push_length = 0.05  // original value: 0.1
+            push_length = 0.05  # original value: 0.1
             target_x = min(max(position[0] + push_direction[0]*push_length, workspace_limits[0][0]), workspace_limits[0][1])
             target_y = min(max(position[1] + push_direction[1]*push_length, workspace_limits[1][0]), workspace_limits[1][1])
             push_length = np.sqrt(np.power(target_x-position[0],2)+np.power(target_y-position[1],2))
