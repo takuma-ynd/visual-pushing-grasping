@@ -36,14 +36,17 @@ class Robot(object):
             # Read files in object mesh directory 
             self.obj_mesh_dir = obj_mesh_dir
             self.num_obj = num_obj
-            self.mesh_list = os.listdir(self.obj_mesh_dir)
+            self.mesh_list = sorted(os.listdir(self.obj_mesh_dir))
 
             # Randomly choose objects to add to scene
             # self.obj_mesh_ind = np.random.randint(0, len(self.mesh_list), size=self.num_obj)
 
             # TEMP: always use obj 0.
-            self.obj_mesh_ind = np.zeros(self.num_obj, dtype=int)
-            self.obj_mesh_color = self.color_space[np.asarray(range(self.num_obj)) % 10, :]
+            # self.obj_mesh_ind = np.zeros(self.num_obj)
+
+            # TEMP: color is identical to each object
+            self.obj_mesh_color = self.color_space[np.asarray(range(len(self.mesh_list)))]
+            # self.obj_mesh_color = self.color_space[np.asarray(range(self.num_obj)) % 10, :]
 
             # Make sure to have the server side running in V-REP: 
             # in a child script of a V-REP scene, add following command
@@ -144,10 +147,12 @@ class Robot(object):
     def setup_sim_camera(self, ortho=True):
 
         # Get handle to camera
-        if ortho:
-            sim_ret, self.cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_ortho', vrep.simx_opmode_blocking)
-        else:
-            sim_ret, self.cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_persp', vrep.simx_opmode_blocking)
+        # if ortho:
+        #     sim_ret, self.cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_ortho', vrep.simx_opmode_blocking)
+        # else:
+        #     sim_ret, self.cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_persp', vrep.simx_opmode_blocking)
+        sim_ret, self.cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_ortho', vrep.simx_opmode_blocking)
+        sim_ret, self.persp_cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_persp', vrep.simx_opmode_blocking)
 
         # Get camera pose and intrinsics in simulation
         sim_ret, cam_position = vrep.simxGetObjectPosition(self.sim_client, self.cam_handle, -1, vrep.simx_opmode_blocking)
@@ -165,13 +170,17 @@ class Robot(object):
         self.bg_color_img, self.bg_depth_img = self.get_camera_data()
         self.bg_depth_img = self.bg_depth_img * self.cam_depth_scale
 
-    def setup_sim_segmentation_camera(self, ortho=True):
+    def setup_sim_segmentation_camera(self):
 
         # Get handle to camera
-        if ortho:
-            sim_ret, self.segment_cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_ortho_segmentation', vrep.simx_opmode_blocking)
-        else:
-            sim_ret, self.segment_cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_persp_segmentation', vrep.simx_opmode_blocking)
+        sim_ret, self.segment_cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_ortho_segmentation', vrep.simx_opmode_blocking)
+        sim_ret, self.segment_persp_cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_persp_segmentation', vrep.simx_opmode_blocking)
+
+        # # Get handle to camera
+        # if ortho:
+        #     sim_ret, self.segment_cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_ortho_segmentation', vrep.simx_opmode_blocking)
+        # else:
+        #     sim_ret, self.segment_cam_handle = vrep.simxGetObjectHandle(self.sim_client, 'Vision_sensor_persp_segmentation', vrep.simx_opmode_blocking)
 
         # NOTE: camera intrinsics are the same as RGB one
         # # Get camera pose and intrinsics in simulation
@@ -196,8 +205,12 @@ class Robot(object):
         # Add each object to robot workspace at x,y location and orientation (random or pre-loaded)
         self.object_handles = []
         sim_obj_handles = []
-        for object_idx in range(len(self.obj_mesh_ind)):
-            curr_mesh_file = os.path.join(self.obj_mesh_dir, self.mesh_list[self.obj_mesh_ind[object_idx]])
+        num_objects = 1
+
+        for i in range(num_objects):
+            # choose object_idx
+            object_idx = random.randint(0, len(self.mesh_list) - 1)
+            curr_mesh_file = os.path.join(self.obj_mesh_dir, self.mesh_list[object_idx])
             if self.is_testing and self.test_preset_cases:
                 curr_mesh_file = self.test_obj_mesh_files[object_idx]
             curr_shape_name = 'shape_%02d' % object_idx
@@ -217,8 +230,35 @@ class Robot(object):
             self.object_handles.append(curr_shape_handle)
             if not (self.is_testing and self.test_preset_cases):
                 time.sleep(2)
-        self.prev_obj_positions = []
-        self.obj_positions = []
+
+
+
+        # Add each object to robot workspace at x,y location and orientation (random or pre-loaded)
+        # self.object_handles = []
+        # sim_obj_handles = []
+        # for object_idx in range(len(self.obj_mesh_ind)):
+        #     curr_mesh_file = os.path.join(self.obj_mesh_dir, self.mesh_list[self.obj_mesh_ind[object_idx]])
+        #     if self.is_testing and self.test_preset_cases:
+        #         curr_mesh_file = self.test_obj_mesh_files[object_idx]
+        #     curr_shape_name = 'shape_%02d' % object_idx
+        #     drop_x = (self.workspace_limits[0][1] - self.workspace_limits[0][0] - 0.2) * np.random.random_sample() + self.workspace_limits[0][0] + 0.1
+        #     drop_y = (self.workspace_limits[1][1] - self.workspace_limits[1][0] - 0.2) * np.random.random_sample() + self.workspace_limits[1][0] + 0.1
+        #     object_position = [drop_x, drop_y, 0.15]
+        #     object_orientation = [2*np.pi*np.random.random_sample(), 2*np.pi*np.random.random_sample(), 2*np.pi*np.random.random_sample()]
+        #     if self.is_testing and self.test_preset_cases:
+        #         object_position = [self.test_obj_positions[object_idx][0], self.test_obj_positions[object_idx][1], self.test_obj_positions[object_idx][2]]
+        #         object_orientation = [self.test_obj_orientations[object_idx][0], self.test_obj_orientations[object_idx][1], self.test_obj_orientations[object_idx][2]]
+        #     object_color = [self.obj_mesh_color[object_idx][0], self.obj_mesh_color[object_idx][1], self.obj_mesh_color[object_idx][2]]
+        #     ret_resp,ret_ints,ret_floats,ret_strings,ret_buffer = vrep.simxCallScriptFunction(self.sim_client, 'remoteApiCommandServer',vrep.sim_scripttype_childscript,'importShape',[0,0,255,0], object_position + object_orientation + object_color, [curr_mesh_file, curr_shape_name], bytearray(), vrep.simx_opmode_blocking)
+        #     if ret_resp == 8:
+        #         print('Failed to add new objects to simulation. Please restart.')
+        #         exit()
+        #     curr_shape_handle = ret_ints[0]
+        #     self.object_handles.append(curr_shape_handle)
+        #     if not (self.is_testing and self.test_preset_cases):
+        #         time.sleep(2)
+        # self.prev_obj_positions = []
+        # self.obj_positions = []
 
 
     def restart_sim(self):
@@ -334,13 +374,17 @@ class Robot(object):
             time.sleep(2)
 
 
-    def get_camera_data(self):
+    def get_camera_data(self, cam_handle=None):
+        if cam_handle is None:
+            cam_handle = self.cam_handle
 
         if self.is_sim:
 
             # Get color image from simulation
-            sim_ret, resolution, raw_image = vrep.simxGetVisionSensorImage(self.sim_client, self.cam_handle, 0, vrep.simx_opmode_blocking)
+            sim_ret, resolution, raw_image = vrep.simxGetVisionSensorImage(self.sim_client, cam_handle, 0, vrep.simx_opmode_blocking)
             color_img = np.asarray(raw_image)
+            print(color_img.shape)
+            print(resolution)
             color_img.shape = (resolution[1], resolution[0], 3)
             color_img = color_img.astype(np.float)/255
             color_img[color_img < 0] += 1
@@ -353,7 +397,7 @@ class Robot(object):
             # cv2.destroyAllWindows()
             
             # Get depth image from simulation
-            sim_ret, resolution, depth_buffer = vrep.simxGetVisionSensorDepthBuffer(self.sim_client, self.cam_handle, vrep.simx_opmode_blocking)
+            sim_ret, resolution, depth_buffer = vrep.simxGetVisionSensorDepthBuffer(self.sim_client, cam_handle, vrep.simx_opmode_blocking)
             depth_img = np.asarray(depth_buffer)
             depth_img.shape = (resolution[1], resolution[0])
             depth_img = np.fliplr(depth_img)
@@ -369,16 +413,18 @@ class Robot(object):
 
         return color_img, depth_img
 
-    def get_segmentation_camera_data(self):
+    def get_segmentation_camera_data(self, segment_cam_handle=None):
+        if segment_cam_handle is None:
+            segment_cam_handle = self.segment_cam_handle
         if self.is_sim:
             # aux_packets returns the list of numbers each corresponding to an object.
-            sim_ret, detection_state, aux_packets = vrep.simxReadVisionSensor(self.sim_client, self.segment_cam_handle, vrep.simx_opmode_blocking)
+            sim_ret, detection_state, aux_packets = vrep.simxReadVisionSensor(self.sim_client, segment_cam_handle, vrep.simx_opmode_blocking)
 
             print('--- handling raw data ---')
             print('aux_packets', aux_packets)
             print('object_handles', self.object_handles)
             # Get color image from simulation
-            sim_ret, resolution, raw_image = vrep.simxGetVisionSensorImage(self.sim_client, self.segment_cam_handle, 0, vrep.simx_opmode_blocking)
+            sim_ret, resolution, raw_image = vrep.simxGetVisionSensorImage(self.sim_client, segment_cam_handle, 0, vrep.simx_opmode_blocking)
             color_img = np.asarray(raw_image)
             color_img.shape = (resolution[1], resolution[0], 3)
             color_img[color_img < 0] += 255 + 1

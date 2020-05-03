@@ -266,9 +266,12 @@ def main(args):
 
         # Get latest RGB-D image
         color_img, depth_img = robot.get_camera_data()
+        color_persp_img, _ = robot.get_camera_data(cam_handle=robot.persp_cam_handle)
         depth_img = depth_img * robot.cam_depth_scale # Apply depth scale from calibration
         segment_img = robot.get_segmentation_camera_data()
+        persp_segment_img = robot.get_segmentation_camera_data(segment_cam_handle=robot.segment_persp_cam_handle)
         obj2segmented_img = robot.get_segmented_images(segment_img, color_img)
+        obj2segmented_persp_img = robot.get_segmented_images(persp_segment_img, color_persp_img)
         # cv2.imshow('segmentation', segment_img.copy().astype(np.uint8))
         # cv2.imshow('rgb_camera', cv2.cvtColor(color_img.copy().astype(np.uint8), cv2.COLOR_RGB2BGR))
         # cv2.imshow('depth_camera', depth_img.copy().astype(np.uint8))
@@ -328,6 +331,7 @@ def main(args):
         logger.save_images(trainer.iteration, color_img, depth_img, '0', reset_counter=reset_counter)
         logger.save_heightmaps(trainer.iteration, color_heightmap, valid_depth_heightmap, '0', reset_counter=reset_counter)
         logger.save_segmented_images(trainer.iteration, counter-1, obj2segmented_img, reset_counter=reset_counter)
+        logger.save_segmented_images(trainer.iteration, counter-1, obj2segmented_persp_img, reset_counter=reset_counter, directory=logger.segmented_persp_images_directory)
 
         if not exit_called: 
 

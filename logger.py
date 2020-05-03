@@ -25,6 +25,7 @@ class Logger():
         self.color_images_directory = os.path.join(self.base_directory, 'data', 'color-images')
         self.depth_images_directory = os.path.join(self.base_directory, 'data', 'depth-images')
         self.segmented_images_directory = os.path.join(self.base_directory, 'data', 'segmented-images')
+        self.segmented_persp_images_directory = os.path.join(self.base_directory, 'data', 'segmented-persp-images')
         self.color_heightmaps_directory = os.path.join(self.base_directory, 'data', 'color-heightmaps')
         self.depth_heightmaps_directory = os.path.join(self.base_directory, 'data', 'depth-heightmaps')
         self.models_directory = os.path.join(self.base_directory, 'models')
@@ -40,6 +41,8 @@ class Logger():
             os.makedirs(self.depth_images_directory)
         if not os.path.exists(self.segmented_images_directory):
             os.makedirs(self.segmented_images_directory)
+        if not os.path.exists(self.segmented_persp_images_directory):
+            os.makedirs(self.segmented_persp_images_directory)
         if not os.path.exists(self.color_heightmaps_directory):
             os.makedirs(self.color_heightmaps_directory)
         if not os.path.exists(self.depth_heightmaps_directory):
@@ -68,10 +71,12 @@ class Logger():
         depth_image = np.round(depth_image * 10000).astype(np.uint16) # Save depth in 1e-4 meters
         cv2.imwrite(os.path.join(self.depth_images_directory, '%06d.%s.%03d.depth.png' % (iteration, mode, reset_counter)), depth_image)
 
-    def save_segmented_images(self, iteration, local_count, obj2segmented_img, reset_counter=0):
+    def save_segmented_images(self, iteration, local_count, obj2segmented_img, reset_counter=0, directory=None):
+        if directory is None:
+            directory = self.segmented_images_directory
         for obj, segmented_img in obj2segmented_img.items():
             color_image = cv2.cvtColor(segmented_img, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(os.path.join(self.segmented_images_directory, '%06d.%03d.%03d.%04d.color.png' % (iteration, local_count, reset_counter, obj)), color_image)
+            cv2.imwrite(os.path.join(directory, '%06d.%03d.%03d.%04d.color.png' % (iteration, local_count, reset_counter, obj)), color_image)
     
     def save_heightmaps(self, iteration, color_heightmap, depth_heightmap, mode, reset_counter=0):
         color_heightmap = cv2.cvtColor(color_heightmap, cv2.COLOR_RGB2BGR)
