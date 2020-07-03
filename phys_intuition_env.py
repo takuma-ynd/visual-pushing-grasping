@@ -5,11 +5,13 @@ import cv2
 from robot import Robot
 from logger import Logger
 import numpy as np
+import random
 import gym
 from gym import error, spaces, utils as gym_utils
 from gym.utils import seeding
 import heuristics
 import utils
+from mypytools import timed
 actstr2id = {'push':0, 'grasp':1}
 id2actstr = ['push', 'grasp']
 class SharedVars():
@@ -20,6 +22,22 @@ class SharedVars():
 class SharedObs():
     # SharedObs = namedtuple('SharedObs', ['valid_depth_heightmap'])
     valid_depth_heightmap = None
+
+def calc_reward(robot, no_change_count, prev_obj_positions):
+    reward = 0
+    if no_change_count[0] != 0 or no_change_count[1] != 0:
+        reward = 0
+    else:
+        obj_positions = np.asarray(robot.get_obj_positions())
+        prev_dist = np.sqrt(np.sum(np.power(prev_obj_positions[0] - robot.workspace_limits[:, 0], 2), axis=0))
+        dist = np.sqrt(np.sum(np.power(obj_positions[0] - robot.workspace_limits[:, 0], 2), axis=0))
+        # max_dist = np.sqrt(np.sum(np.power(self.workspace_limits[:, 1] - self.workspace_limits[:, 0], 2), axis=0))
+        # print('prev_dist', prev_dist)
+        # print('dist', dist)
+        reward = (prev_dist - dist) * 10
+
+    return reward
+    
 
 class PhysIntuitionEnv(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -39,6 +57,7 @@ class PhysIntuitionEnv(gym.Env):
         self.iteration = 0
         is_sim = args.is_sim # Run in simulation?
         self.is_sim = is_sim
+        self.reset_threshold = getattr(args, 'reset_threshold', 20)
         obj_mesh_dir = os.path.abspath(args.obj_mesh_dir) if is_sim else None # Directory containing 3D mesh files (.obj) of objects to be added to simulation
         num_obj = args.num_obj if is_sim else None # Number of objects to add to simulation
         tcp_host_ip = args.tcp_host_ip if not is_sim else None # IP and port to robot arm as TCP client (UR5)
@@ -84,7 +103,7 @@ class PhysIntuitionEnv(gym.Env):
 
 
         # Set random seed
-        np.random.seed(random_seed)
+        self.seed(random_seed)
 
         # Initialize pick-and-place system (camera and robot)
         robot = Robot(is_sim, obj_mesh_dir, num_obj, self.workspace_limits,
@@ -111,7 +130,14 @@ class PhysIntuitionEnv(gym.Env):
         # highs_angle = [16.0]
         # high = np.asarray(highs_angle + highs_yx)
         self.action_space = spaces.Tuple((spaces.Discrete(2), spaces.Box(low=np.array([0, 0, 0]), high=np.array([16, 224 - 1, 224 - 1]), dtype=int)))
-        # self.observation_space = spaces.Box(np.zeros((n_channels, self.env._board_size, self.env._board_size)))  # TODO: FIX IT
+        # TEMP:
+        # self.action_space = spaces.Box(low=np.array([0, 0, 0], dtype=int), high=np.array([16, 224 - 1, 224 - 1], dtype=int), dtype=int)
+        self.observation_space = spaces.Box(low=np.zeros((480, 640, 3), dtype=np.uint8), high=np.ones((480, 640, 3), dtype=np.uint8))
+
+    def seed(self, seed_val):
+        random.seed(seed_val)
+        np.random.seed(seed_val)
+
 
     def get_action(self, best_pix_ind, primitive_action, num_rotations, valid_depth_heightmap):
         '''calculate primitive_position, best_rotation_angle from best_pix_ind'''
@@ -144,20 +170,15 @@ class PhysIntuitionEnv(gym.Env):
                 'Change not detected for more than two pushes. Running heuristic pushing.')
             best_pix_ind = heuristics.push_heuristic(valid_depth_heightmap)
             self.shared_vars.no_change_count[0] = 0
-            use_heuristic = True
         elif id2actstr[primitive_action] == 'grasp':
             print(
                 'Change not detected for more than two grasps. Running heuristic grasping.')
             best_pix_ind = heuristics.grasp_heuristic(valid_depth_heightmap)
             self.shared_vars.no_change_count[1] = 0
-            use_heuristic = True
-        else:
-            use_heuristic = False
 
-
-
-
-        return self.get_action(best_pix_ind, primitive_action, self.num_rotations, valid_depth_heightmap)
+        # return self.get_action(best_pix_ind, primitive_action, self.num_rotations, valid_depth_heightmap)
+        action = (primitive_action, best_pix_ind)
+        return action
 
 
 
@@ -174,96 +195,104 @@ class PhysIntuitionEnv(gym.Env):
                     information provided by the environment about its current state:
                     (observation, reward, done)
         """
-        iteration_time_0 = time.time()
-        done = False
-        primitive_action, best_pix_ind = action
-        print('primitive_action', primitive_action)
-        print('best_pix_ind', best_pix_ind)
-        primitive_position, best_rotation_angle = self.get_action(best_pix_ind, primitive_action, self.num_rotations, self.shared_obs.valid_depth_heightmap)
-        # primitive_action, primitive_position, best_rotation_angle = action
+        with timed('step process'):
+            done = False
+            primitive_action, best_pix_ind = action
+            print('action', action)
+            # print('primitive_action', primitive_action)
+            # print('best_pix_ind', best_pix_ind)
+            primitive_position, best_rotation_angle = self.get_action(best_pix_ind, primitive_action, self.num_rotations, self.shared_obs.valid_depth_heightmap)
+            # primitive_action, primitive_position, best_rotation_angle = action
 
-        # Execute primitive
-        if id2actstr[primitive_action] == 'push':
-            push_success = self.robot.push(primitive_position, best_rotation_angle, self.workspace_limits)
-            print('Push successful: %r' % (push_success))
-        elif id2actstr[primitive_action] == 'grasp':
-            grasp_success = self.robot.grasp(primitive_position, best_rotation_angle, self.workspace_limits)
-            print('Grasp successful: %r' % (grasp_success))
-
-
-        # Get latest RGB-D image
-        color_img, depth_img = self.robot.get_camera_data()
-        depth_img = depth_img * self.robot.cam_depth_scale # Apply depth scale from calibration
-        segment_img = self.robot.get_segmentation_camera_data()
-        obj2segmented_img = self.robot.get_segmented_images(segment_img, color_img)
-        color_heightmap, depth_heightmap = utils.get_heightmap(color_img, depth_img, self.robot.cam_intrinsics, self.robot.cam_pose, self.workspace_limits, self.heightmap_resolution)
-        valid_depth_heightmap = depth_heightmap.copy()
-        valid_depth_heightmap[np.isnan(valid_depth_heightmap)] = 0
-
-        self.logger.save_images(self.iteration, color_img, depth_img, '0', reset_counter=self.reset_counter)
-        self.logger.save_heightmaps(self.iteration, color_heightmap, valid_depth_heightmap, '0', reset_counter=self.reset_counter)
-        self.logger.save_segmented_images(self.iteration, self.local_counter-1, obj2segmented_img, reset_counter=self.reset_counter)
-
-        obs = obj2segmented_img
+            # Execute primitive
+            if id2actstr[primitive_action] == 'push':
+                push_success = self.robot.push(primitive_position, best_rotation_angle, self.workspace_limits)
+                print('Push successful: %r' % (push_success))
+            elif id2actstr[primitive_action] == 'grasp':
+                grasp_success = self.robot.grasp(primitive_position, best_rotation_angle, self.workspace_limits)
+                print('Grasp successful: %r' % (grasp_success))
 
 
-        # Detect changes
-        depth_diff = abs(depth_heightmap - self.shared_vars.prev_depth_heightmap)
-        depth_diff[np.isnan(depth_diff)] = 0
-        depth_diff[depth_diff > 0.3] = 0
-        depth_diff[depth_diff < 0.01] = 0
-        depth_diff[depth_diff > 0] = 1
-        change_threshold = 300
-        change_value = np.sum(depth_diff)
-        change_detected = change_value > change_threshold  # or prev_grasp_success
-        print('Change detected: %r (value: %d)' % (change_detected, change_value))
-        print('no_change count:', self.shared_vars.no_change_count)
+            # Get latest RGB-D image
+            color_img, depth_img = self.robot.get_camera_data()
+            depth_img = depth_img * self.robot.cam_depth_scale # Apply depth scale from calibration
+            segment_img = self.robot.get_segmentation_camera_data()
+            obj2segmented_img = self.robot.get_segmented_images(segment_img, color_img)
+            color_heightmap, depth_heightmap = utils.get_heightmap(color_img, depth_img, self.robot.cam_intrinsics, self.robot.cam_pose, self.workspace_limits, self.heightmap_resolution)
+            valid_depth_heightmap = depth_heightmap.copy()
+            valid_depth_heightmap[np.isnan(valid_depth_heightmap)] = 0
 
-        if change_detected:
-            if id2actstr[self.shared_vars.prev_primitive_action] == 'push':
-                self.shared_vars.no_change_count[0] = 0
-            # elif prev_primitive_action == 'grasp':
-            #     no_change_count[1] = 0
-        else:
-            if id2actstr[self.shared_vars.prev_primitive_action] == 'push':
-                self.shared_vars.no_change_count[0] += 1
-            # elif prev_primitive_action == 'grasp':
-            #     no_change_count[1] += 1
-        print('no_change_count:', self.shared_vars.no_change_count)
+            self.logger.save_images(self.iteration, color_img, depth_img, '0', reset_counter=self.reset_counter)
+            self.logger.save_heightmaps(self.iteration, color_heightmap, valid_depth_heightmap, '0', reset_counter=self.reset_counter)
+            self.logger.save_segmented_images(self.iteration, self.local_counter-1, obj2segmented_img, reset_counter=self.reset_counter)
+
+            # TEMP:
+            obs = list(obj2segmented_img.values())[0]
 
 
-        # ===== reset condition ====
-        # Reset simulation or pause real-world training if table is empty
-        stuff_count = np.zeros(valid_depth_heightmap.shape)
-        stuff_count[valid_depth_heightmap > 0.02] = 1
-        empty_threshold = 300
-        if self.is_sim and self.is_testing:
-            empty_threshold = 10
-        if np.sum(stuff_count) < empty_threshold or (self.is_sim and self.shared_vars.no_change_count[0] + self.shared_vars.no_change_count[1] > 10): # or counter % n_trials == 0:
-            print('Not enough objects in view (value: %d / threshold: %d)! Repositioning objects.' % (np.sum(stuff_count), empty_threshold))
-            done = True
+            # Detect changes
+            depth_diff = abs(depth_heightmap - self.shared_vars.prev_depth_heightmap)
+            depth_diff[np.isnan(depth_diff)] = 0
+            depth_diff[depth_diff > 0.3] = 0
+            depth_diff[depth_diff < 0.01] = 0
+            depth_diff[depth_diff > 0] = 1
+            change_threshold = 300
+            change_value = np.sum(depth_diff)
+            change_detected = change_value > change_threshold  # or prev_grasp_success
+            print('Change detected: %r (value: %d)' % (change_detected, change_value))
+            # print('no_change count:', self.shared_vars.no_change_count)
 
-        # Save information for next training step
-        self.shared_vars.prev_color_img = color_img.copy()
-        self.shared_vars.prev_depth_img = depth_img.copy()
-        self.shared_vars.prev_obj2segmentation_img = {key: img.copy() for key, img in obj2segmented_img.items()}
-        self.shared_vars.prev_color_heightmap = color_heightmap.copy()
-        self.shared_vars.prev_depth_heightmap = depth_heightmap.copy()
-        # prev_valid_depth_heightmap = valid_depth_heightmap.copy()
-        # prev_push_success = nonlocal_variables['push_success']
-        # prev_grasp_success = nonlocal_variables['grasp_success']
-        self.shared_vars.prev_primitive_action = primitive_action
-        # prev_push_predictions = push_predictions.copy()
-        # prev_grasp_predictions = grasp_predictions.copy()
-        # self.shared_vars.prev_best_pix_ind = best_pix_ind
-        self.shared_obs.valid_depth_heightmap = valid_depth_heightmap
+            if change_detected:
+                if id2actstr[self.shared_vars.prev_primitive_action] == 'push':
+                    self.shared_vars.no_change_count[0] = 0
+                elif id2actstr[self.shared_vars.prev_primitive_action] == 'grasp':
+                    self.shared_vars.no_change_count[1] = 0
+            else:
+                if id2actstr[self.shared_vars.prev_primitive_action] == 'push':
+                    self.shared_vars.no_change_count[0] += 1
+                elif id2actstr[self.shared_vars.prev_primitive_action] == 'grasp':
+                    self.shared_vars.no_change_count[1] += 1
+            print('no_change_count:', self.shared_vars.no_change_count)
 
-        reward = 0
-        self.iteration += 1
-        self.local_counter += 1
 
-        iteration_time_1 = time.time()
-        print('Time elapsed: %f' % (iteration_time_1-iteration_time_0))
+            # ===== reset condition ====
+            # Reset simulation or pause real-world training if table is empty
+            stuff_count = np.zeros(valid_depth_heightmap.shape)
+            stuff_count[valid_depth_heightmap > 0.02] = 1
+            empty_threshold = 300
+            if self.is_sim and self.is_testing:
+                empty_threshold = 10
+            if np.sum(stuff_count) < empty_threshold or (self.is_sim and self.shared_vars.no_change_count[0] + self.shared_vars.no_change_count[1] > 10): # or counter % n_trials == 0:
+                print('Not enough objects in view (value: %d / threshold: %d)! Repositioning objects.' % (np.sum(stuff_count), empty_threshold))
+                done = True
+            if (self.shared_vars.no_change_count[0] > self.reset_threshold) or (self.shared_vars.no_change_count[1] > self.reset_threshold):
+                done = True
+
+
+
+            # reward = 0
+            # reward = self.robot.get_my_task_score()
+            reward = calc_reward(self.robot, self.shared_vars.no_change_count, self.shared_vars.prev_obj_positions)
+
+            # Save information for next training step
+            self.shared_vars.prev_color_img = color_img.copy()
+            self.shared_vars.prev_depth_img = depth_img.copy()
+            self.shared_vars.prev_obj2segmentation_img = list({key: img.copy() for key, img in obj2segmented_img.items()}.values())[0]
+            self.shared_vars.prev_color_heightmap = color_heightmap.copy()
+            self.shared_vars.prev_depth_heightmap = depth_heightmap.copy()
+            # prev_valid_depth_heightmap = valid_depth_heightmap.copy()
+            # prev_push_success = nonlocal_variables['push_success']
+            # prev_grasp_success = nonlocal_variables['grasp_success']
+            self.shared_vars.prev_primitive_action = primitive_action
+            # prev_push_predictions = push_predictions.copy()
+            # prev_grasp_predictions = grasp_predictions.copy()
+            # self.shared_vars.prev_best_pix_ind = best_pix_ind
+            self.shared_obs.valid_depth_heightmap = valid_depth_heightmap
+            self.shared_vars.prev_obj_positions = self.robot.get_obj_positions().copy()
+
+            self.iteration += 1
+            self.local_counter += 1
+
         return obs, reward, done, {}
 
     def reset(self):
@@ -274,12 +303,10 @@ class PhysIntuitionEnv(gym.Env):
             observation:    array
                             the initial state of the environment
         """
-        self.reset_counter += 1
-        self.local_counter = 0
-        self.shared_vars.no_change_count = [0, 0]
         if self.is_sim:
-            self.robot.restart_sim()
-            self.robot.add_objects()
+            if self.reset_counter != 0:  # Don't call them at the first time to call reset
+                self.robot.restart_sim()
+                self.robot.add_objects()
             # counter = 0
             # reset_counter += 1
             # if is_testing: # If at end of test run, re-load original weights (before test run)
@@ -299,7 +326,7 @@ class PhysIntuitionEnv(gym.Env):
             self.logger.save_images(self.iteration, color_img, depth_img, '0', reset_counter=self.reset_counter)
             self.logger.save_heightmaps(self.iteration, color_heightmap, valid_depth_heightmap, '0', reset_counter=self.reset_counter)
             self.logger.save_segmented_images(self.iteration, self.local_counter-1, obj2segmented_img, reset_counter=self.reset_counter)
-            obs = obj2segmented_img
+            obs = list(obj2segmented_img.values())[0]
 
 
             # Save information for next training step
@@ -315,6 +342,7 @@ class PhysIntuitionEnv(gym.Env):
             # prev_push_predictions = push_predictions.copy()
             # prev_grasp_predictions = grasp_predictions.copy()
             # self.shared_vars.prev_best_pix_ind = best_pix_ind
+            self.shared_vars.prev_obj_positions = self.robot.get_obj_positions().copy()
 
             self.shared_obs.valid_depth_heightmap = valid_depth_heightmap
 
@@ -337,7 +365,7 @@ class PhysIntuitionEnv(gym.Env):
             self.logger.save_images(self.iteration, color_img, depth_img, '0', reset_counter=self.reset_counter)
             self.logger.save_heightmaps(self.iteration, color_heightmap, valid_depth_heightmap, '0', reset_counter=self.reset_counter)
             self.logger.save_segmented_images(self.iteration, self.local_counter-1, obj2segmented_img, reset_counter=self.reset_counter)
-            obs = obj2segmented_img
+            obs = list(obj2segmented_img.values())[0]
 
 
             # Save information for next training step
@@ -353,11 +381,16 @@ class PhysIntuitionEnv(gym.Env):
             # prev_push_predictions = push_predictions.copy()
             # prev_grasp_predictions = grasp_predictions.copy()
             # self.shared_vars.prev_best_pix_ind = best_pix_ind
+            self.shared_vars.prev_obj_positions = self.robot.get_obj_positions().copy()
 
             self.shared_obs.valid_depth_heightmap = valid_depth_heightmap
 
         # trainer.clearance_log.append([trainer.iteration]) 
         # self.logger.write_to_log('clearance', trainer.clearance_log)
+
+        self.reset_counter += 1
+        self.local_counter = 0
+        self.shared_vars.no_change_count = [0, 0]
         return obs
 
     def render(self, mode='human', close=False):
@@ -366,3 +399,4 @@ class PhysIntuitionEnv(gym.Env):
         which should be readable to the human eye if mode is set to 'human'.
         """
         pass
+

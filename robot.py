@@ -296,16 +296,25 @@ class Robot(object):
                                     [-0.375, -0.125, 0.0]]) #yellow
 
         obj_positions = np.asarray(self.get_obj_positions())
+        import ipdb; ipdb.set_trace()
         obj_positions.shape = (1, obj_positions.shape[0], obj_positions.shape[1])
         obj_positions = np.tile(obj_positions, (key_positions.shape[0], 1, 1))
 
-        key_positions.shape = (key_positions.shape[0], 1, key_positions.shape[1])
+        key_positions.shape = (key_positions.shape[0], 1, key_positions.shape[1])  # reshape
         key_positions = np.tile(key_positions, (1 ,obj_positions.shape[1] ,1))
 
         key_dist = np.sqrt(np.sum(np.power(obj_positions - key_positions, 2), axis=2))
         key_nn_idx = np.argmin(key_dist, axis=0)
 
         return np.sum(key_nn_idx == np.asarray(range(self.num_obj)) % 4)
+
+
+    def get_my_task_score(self):
+        '''score is given by the dist between the obj and left bottom corner (min of workspace limit)'''
+        obj_positions = np.asarray(self.get_obj_positions())
+        dist = np.sqrt(np.sum(np.power(obj_positions[0] - self.workspace_limits[:, 0], 2), axis=0))
+        max_dist = np.sqrt(np.sum(np.power(self.workspace_limits[:, 1] - self.workspace_limits[:, 0], 2), axis=0))
+        return max_dist - dist
 
 
     def check_goal_reached(self):
@@ -383,8 +392,8 @@ class Robot(object):
             # Get color image from simulation
             sim_ret, resolution, raw_image = vrep.simxGetVisionSensorImage(self.sim_client, cam_handle, 0, vrep.simx_opmode_blocking)
             color_img = np.asarray(raw_image)
-            print(color_img.shape)
-            print(resolution)
+            print('sensor color_img.shape', color_img.shape)
+            print('resolution', resolution)
             color_img.shape = (resolution[1], resolution[0], 3)
             color_img = color_img.astype(np.float)/255
             color_img[color_img < 0] += 1
@@ -421,7 +430,7 @@ class Robot(object):
             sim_ret, detection_state, aux_packets = vrep.simxReadVisionSensor(self.sim_client, segment_cam_handle, vrep.simx_opmode_blocking)
 
             print('--- handling raw data ---')
-            print('aux_packets', aux_packets)
+            # print('aux_packets', aux_packets)
             print('object_handles', self.object_handles)
             # Get color image from simulation
             sim_ret, resolution, raw_image = vrep.simxGetVisionSensorImage(self.sim_client, segment_cam_handle, 0, vrep.simx_opmode_blocking)
@@ -432,9 +441,9 @@ class Robot(object):
             # color_img[color_img < 0] += 1
             # color_img *= 255
             color_img.astype(np.int64)
-            print(collections.Counter(color_img[:,:,0].reshape(-1)))
-            print(collections.Counter(color_img[:,:,1].reshape(-1)))
-            print(collections.Counter(color_img[:,:,2].reshape(-1)))
+            # print(collections.Counter(color_img[:,:,0].reshape(-1)))
+            # print(collections.Counter(color_img[:,:,1].reshape(-1)))
+            # print(collections.Counter(color_img[:,:,2].reshape(-1)))
 
             segmentation = color_img[:, :, 0].copy()
             segmentation += color_img[:, :, 1].copy() * 256
@@ -931,8 +940,8 @@ class Robot(object):
             move_direction = np.asarray([tool_position[0] - UR5_target_position[0], tool_position[1] - UR5_target_position[1], tool_position[2] - UR5_target_position[2]])
             move_magnitude = np.linalg.norm(move_direction)
             move_step = 0.05*move_direction/move_magnitude
-            print('move_direction', move_direction[0])
-            print('move_step', move_direction[0])
+            # print('move_direction', move_direction[0])
+            # print('move_step', move_direction[0])
             # TEMP: handle div 0 by a trick
             if move_direction[0] == 0.0 and move_step[0] == 0.0:
                 num_move_steps = int(np.floor(0))
@@ -958,7 +967,7 @@ class Robot(object):
             self.move_to(position, None)
 
             # Compute target location (push to the right)
-            push_length = 0.05  # original value: 0.1
+            push_length = 0.15  # original value: 0.1
             target_x = min(max(position[0] + push_direction[0]*push_length, workspace_limits[0][0]), workspace_limits[0][1])
             target_y = min(max(position[1] + push_direction[1]*push_length, workspace_limits[1][0]), workspace_limits[1][1])
             push_length = np.sqrt(np.power(target_x-position[0],2)+np.power(target_y-position[1],2))

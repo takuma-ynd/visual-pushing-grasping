@@ -1,14 +1,41 @@
 import argparse
+import numpy as np
 from phys_intuition_env import PhysIntuitionEnv
 
+'''
+Y
+^
+0          rotation
+|
+|              8
+|              ^
+|   9, 10... 15|1, 2...7
+|              |
+|              0
+223
+O----------------------223>  X
+        [Robot]
+
+'''
 def main(args):
     physenv = PhysIntuitionEnv(args)
+    # import ipdb; ipdb.set_trace()
+    # for arg in args.keys():
+    #     print(arg, '=', getattr(args, arg))
     obs = physenv.reset()
+    import ipdb; ipdb.set_trace()
     done = False
     while not done:
         action = physenv.action_space.sample()
+        best_pix = action[1]
         print('action', action)
+        best_pix = np.asarray(input().strip().split(' '), dtype=int).reshape(-1)
+        # best_pix = np.asarray([float(input('type input:')) for _ in range(3)], dtype=int).reshape(-1)
+        # best_pix = np.asarray([float(input('type input:')) for _ in range(3)], dtype=int).reshape(-1)
+        action = (0, best_pix)  # force push
+        # print('action', action)
         obs, reward, done, _ =  physenv.step(action)
+        print('reward', reward)
         img = list(obs.values())[0]
 
 
