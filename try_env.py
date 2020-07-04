@@ -18,6 +18,7 @@ O----------------------223>  X
 
 '''
 def main(args):
+    print('starting env..')
     physenv = PhysIntuitionEnv(args)
     # import ipdb; ipdb.set_trace()
     # for arg in args.keys():
@@ -36,7 +37,8 @@ def main(args):
         # print('action', action)
         obs, reward, done, _ =  physenv.step(action)
         print('reward', reward)
-        img = list(obs.values())[0]
+        # img = list(obs.values())[0]
+        img = obs
 
 
 if __name__ == '__main__':
@@ -78,6 +80,7 @@ if __name__ == '__main__':
     parser.add_argument('--logging_directory', dest='logging_directory', action='store')
     parser.add_argument('--save_visualizations', dest='save_visualizations', action='store_true', default=False,          help='save visualizations of FCN predictions?')
     
+    parser.add_argument('--remote_api_port', dest='remote_api_port', type=int, action='store', default=19997,          help='remote api port')
     # Run main program with specified arguments
     args = parser.parse_args()
     main(args)

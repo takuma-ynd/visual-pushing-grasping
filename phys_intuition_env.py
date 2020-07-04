@@ -72,6 +72,8 @@ class PhysIntuitionEnv(gym.Env):
         self.workspace_limits = self.workspace_limits
         self.heightmap_resolution = args.heightmap_resolution # Meters per pixel of heightmap
         random_seed = args.random_seed
+        remote_api_port = 19997 if args.remote_api_port is None else args.remote_api_port
+        self.remote_api_port = remote_api_port
         # force_cpu = args.force_cpu
 
         # ------------- Algorithm options -------------
@@ -108,7 +110,7 @@ class PhysIntuitionEnv(gym.Env):
         # Initialize pick-and-place system (camera and robot)
         robot = Robot(is_sim, obj_mesh_dir, num_obj, self.workspace_limits,
                       tcp_host_ip, tcp_port, rtc_host_ip, rtc_port,
-                      is_testing, test_preset_cases, test_preset_file)
+                      is_testing, test_preset_cases, test_preset_file, remote_api_port)
         self.robot = robot
 
         # Initialize data logger

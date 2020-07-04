@@ -13,7 +13,7 @@ from simulation import vrep
 class Robot(object):
     def __init__(self, is_sim, obj_mesh_dir, num_obj, workspace_limits,
                  tcp_host_ip, tcp_port, rtc_host_ip, rtc_port,
-                 is_testing, test_preset_cases, test_preset_file):
+                 is_testing, test_preset_cases, test_preset_file, remote_api_port=19997):
 
         self.is_sim = is_sim
         self.workspace_limits = workspace_limits
@@ -37,6 +37,7 @@ class Robot(object):
             self.obj_mesh_dir = obj_mesh_dir
             self.num_obj = num_obj
             self.mesh_list = sorted(os.listdir(self.obj_mesh_dir))
+            self.remote_api_port = remote_api_port
 
             # Randomly choose objects to add to scene
             # self.obj_mesh_ind = np.random.randint(0, len(self.mesh_list), size=self.num_obj)
@@ -63,7 +64,7 @@ class Robot(object):
 
             # Connect to simulator
             vrep.simxFinish(-1) # Just in case, close all opened connections
-            self.sim_client = vrep.simxStart('127.0.0.1', 19997, True, True, 5000, 5) # Connect to V-REP on port 19997
+            self.sim_client = vrep.simxStart('127.0.0.1', remote_api_port, True, True, 5000, 5) # Connect to V-REP on port 19997
             if self.sim_client == -1:
                 print('Failed to connect to simulation (V-REP remote API server). Exiting.')
                 exit()
