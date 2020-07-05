@@ -10,7 +10,7 @@ class PhysExplorer(Explorer):
         self._explorers = Boltzmann()
 
     def select_action(self, t, greedy_action_func, action_value=None):
-        if  t < 1000 and random.random() < 0.7:
+        if random.random() < max(5000 - t, 0) / 5000:
             # print_blue('Bootstrapped PUSH at t={}'.format(t))
             action = self._env.get_heuristic_action(0, self._env.shared_obs.valid_depth_heightmap)
             action = self._env.reverse_action(action)  # convert tuple of (3, ) --> int
