@@ -63,13 +63,13 @@ class Robot(object):
             # MODIFY remoteApiConnections.txt 
 
             # Connect to simulator
-            vrep.simxFinish(-1) # Just in case, close all opened connections
+            vrep.simxFinish(-1) # Just in case, close all opened connections <-- temporaly remove this to run multiple instances
             self.sim_client = vrep.simxStart('127.0.0.1', remote_api_port, True, True, 5000, 5) # Connect to V-REP on port 19997
             if self.sim_client == -1:
                 print('Failed to connect to simulation (V-REP remote API server). Exiting.')
                 exit()
             else:
-                print('Connected to simulation.')
+                print('Connected to simulation at port {}'.format(remote_api_port))
                 self.restart_sim()
 
             self.is_testing = is_testing
@@ -393,8 +393,8 @@ class Robot(object):
             # Get color image from simulation
             sim_ret, resolution, raw_image = vrep.simxGetVisionSensorImage(self.sim_client, cam_handle, 0, vrep.simx_opmode_blocking)
             color_img = np.asarray(raw_image)
-            print('sensor color_img.shape', color_img.shape)
-            print('resolution', resolution)
+            # print('sensor color_img.shape', color_img.shape)
+            # print('resolution', resolution)
             color_img.shape = (resolution[1], resolution[0], 3)
             color_img = color_img.astype(np.float)/255
             color_img[color_img < 0] += 1
@@ -430,9 +430,9 @@ class Robot(object):
             # aux_packets returns the list of numbers each corresponding to an object.
             sim_ret, detection_state, aux_packets = vrep.simxReadVisionSensor(self.sim_client, segment_cam_handle, vrep.simx_opmode_blocking)
 
-            print('--- handling raw data ---')
+            # print('--- handling raw data ---')
             # print('aux_packets', aux_packets)
-            print('object_handles', self.object_handles)
+            # print('object_handles', self.object_handles)
             # Get color image from simulation
             sim_ret, resolution, raw_image = vrep.simxGetVisionSensorImage(self.sim_client, segment_cam_handle, 0, vrep.simx_opmode_blocking)
             color_img = np.asarray(raw_image)
@@ -450,7 +450,7 @@ class Robot(object):
             segmentation += color_img[:, :, 1].copy() * 256
             segmentation += color_img[:, :, 2].copy() * 256 * 256
             segmentation = np.fliplr(segmentation)  # I don't know the necessity of this...
-            print('segmentation', collections.Counter(segmentation.reshape(-1)))
+            # print('segmentation', collections.Counter(segmentation.reshape(-1)))
 
             # NOTE: maybe I need to fliplr ?
 

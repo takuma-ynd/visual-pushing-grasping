@@ -85,6 +85,10 @@ def main():
     def make_env(test):
         # env = gym.make(args.env)
         config_vars = Config()
+        if test:
+            config_vars.remote_api_port = 19998
+        else:
+            config_vars.remote_api_port = 19997
         env = PhysActionWrapper(PhysIntuitionEnv(config_vars))
         # Use different random seeds for train and test envs
         env_seed = 2 ** 32 - 1 - args.seed if test else args.seed
@@ -169,8 +173,7 @@ def main():
     if args.load:
         agent.load(args.load)
 
-    # eval_env = make_env(test=True)
-    # eval_env = env
+    eval_env = make_env(test=True)
 
     if args.demo:
         eval_stats = experiments.eval_performance(
@@ -183,16 +186,16 @@ def main():
             args.eval_n_runs, eval_stats['mean'], eval_stats['median'],
             eval_stats['stdev']))
     else:
-        # experiments.train_agent_with_evaluation(
-        #     agent=agent, env=env, steps=args.steps,
-        #     eval_n_steps=None,
-        #     eval_n_episodes=args.eval_n_runs, eval_interval=args.eval_interval,
-        #     outdir=args.outdir, eval_env=eval_env,
-        #     train_max_episode_len=timestep_limit)
-        experiments.train_agent(
+        experiments.train_agent_with_evaluation(
             agent=agent, env=env, steps=args.steps,
-            outdir=args.outdir,
-            max_episode_len=timestep_limit)
+            eval_n_steps=None,
+            eval_n_episodes=args.eval_n_runs, eval_interval=args.eval_interval,
+            outdir=args.outdir, eval_env=eval_env,
+            train_max_episode_len=timestep_limit)
+        # experiments.train_agent(
+        #     agent=agent, env=env, steps=args.steps,
+        #     outdir=args.outdir, checkpoint_freq=1000,
+        #     max_episode_len=timestep_limit)
 
 
 if __name__ == '__main__':

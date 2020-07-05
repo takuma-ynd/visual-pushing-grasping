@@ -57,7 +57,7 @@ class PhysIntuitionEnv(gym.Env):
         self.iteration = 0
         is_sim = args.is_sim # Run in simulation?
         self.is_sim = is_sim
-        self.reset_threshold = getattr(args, 'reset_threshold', 20)
+        self.reset_threshold = getattr(args, 'reset_threshold', 10)
         obj_mesh_dir = os.path.abspath(args.obj_mesh_dir) if is_sim else None # Directory containing 3D mesh files (.obj) of objects to be added to simulation
         num_obj = args.num_obj if is_sim else None # Number of objects to add to simulation
         tcp_host_ip = args.tcp_host_ip if not is_sim else None # IP and port to robot arm as TCP client (UR5)
@@ -69,10 +69,9 @@ class PhysIntuitionEnv(gym.Env):
             # self.workspace_limits = np.asarray([[-0.524, -0.276], [-0.224, 0.224], [-0.0001, 0.4]]) # Cols: min max, Rows: x y z (define workspace limits in robot coordinates)
         else:
             self.workspace_limits = np.asarray([[0.3, 0.748], [-0.224, 0.224], [-0.255, -0.1]]) # Cols: min max, Rows: x y z (define workspace limits in robot coordinates)
-        self.workspace_limits = self.workspace_limits
         self.heightmap_resolution = args.heightmap_resolution # Meters per pixel of heightmap
         random_seed = args.random_seed
-        remote_api_port = 19997 if args.remote_api_port is None else args.remote_api_port
+        remote_api_port = args.remote_api_port
         self.remote_api_port = remote_api_port
         # force_cpu = args.force_cpu
 
@@ -89,7 +88,7 @@ class PhysIntuitionEnv(gym.Env):
         is_testing = args.is_testing
         self.is_testing = is_testing
         max_test_trials = args.max_test_trials # Maximum number of test runs per case/scenario
-        test_preset_cases = args.test_preset_cases 
+        test_preset_cases = args.test_preset_cases
         test_preset_file = os.path.abspath(args.test_preset_file) if test_preset_cases else None
 
 
@@ -200,7 +199,7 @@ class PhysIntuitionEnv(gym.Env):
         with timed('step process'):
             done = False
             primitive_action, best_pix_ind = action
-            print('action', action)
+            # print('action', action)
             # print('primitive_action', primitive_action)
             # print('best_pix_ind', best_pix_ind)
             primitive_position, best_rotation_angle = self.get_action(best_pix_ind, primitive_action, self.num_rotations, self.shared_obs.valid_depth_heightmap)
@@ -209,10 +208,10 @@ class PhysIntuitionEnv(gym.Env):
             # Execute primitive
             if id2actstr[primitive_action] == 'push':
                 push_success = self.robot.push(primitive_position, best_rotation_angle, self.workspace_limits)
-                print('Push successful: %r' % (push_success))
+                # print('Push successful: %r' % (push_success))
             elif id2actstr[primitive_action] == 'grasp':
                 grasp_success = self.robot.grasp(primitive_position, best_rotation_angle, self.workspace_limits)
-                print('Grasp successful: %r' % (grasp_success))
+                # print('Grasp successful: %r' % (grasp_success))
 
 
             # Get latest RGB-D image
@@ -241,7 +240,7 @@ class PhysIntuitionEnv(gym.Env):
             change_threshold = 300
             change_value = np.sum(depth_diff)
             change_detected = change_value > change_threshold  # or prev_grasp_success
-            print('Change detected: %r (value: %d)' % (change_detected, change_value))
+            # print('Change detected: %r (value: %d)' % (change_detected, change_value))
             # print('no_change count:', self.shared_vars.no_change_count)
 
             if change_detected:
@@ -254,7 +253,7 @@ class PhysIntuitionEnv(gym.Env):
                     self.shared_vars.no_change_count[0] += 1
                 elif id2actstr[self.shared_vars.prev_primitive_action] == 'grasp':
                     self.shared_vars.no_change_count[1] += 1
-            print('no_change_count:', self.shared_vars.no_change_count)
+            # print('no_change_count:', self.shared_vars.no_change_count)
 
 
             # ===== reset condition ====
@@ -267,7 +266,7 @@ class PhysIntuitionEnv(gym.Env):
             if np.sum(stuff_count) < empty_threshold or (self.is_sim and self.shared_vars.no_change_count[0] + self.shared_vars.no_change_count[1] > 10): # or counter % n_trials == 0:
                 print('Not enough objects in view (value: %d / threshold: %d)! Repositioning objects.' % (np.sum(stuff_count), empty_threshold))
                 done = True
-            if (self.shared_vars.no_change_count[0] > self.reset_threshold) or (self.shared_vars.no_change_count[1] > self.reset_threshold):
+            if (self.shared_vars.no_change_count[0] > self.reset_threshold) or (self.shared_vars.no_change_count[1] >= self.reset_threshold):
                 done = True
 
 
