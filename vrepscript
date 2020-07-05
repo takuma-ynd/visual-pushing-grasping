@@ -1,0 +1,1 @@
+xvfb-run --auto-servernum -s '-screen 0, 640x480x24 -extension RANDR' ./vrep.sh -h ../visual-pushing-grasping/simulation/simulation_fixed_persp.ttt
