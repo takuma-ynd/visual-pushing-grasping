@@ -1,5 +1,6 @@
 # template source: https://github.com/HendrikPN/gym-template/blob/master/gym_foo/envs/foo_env.py
 import os
+import subprocess
 import time
 import cv2
 from robot import Robot
@@ -106,7 +107,28 @@ class PhysIntuitionEnv(gym.Env):
         # Set random seed
         self.seed(random_seed)
 
+        # run vrep with subprocess call
+        vrep_path = os.path.join(args.vrep_dir, 'vrep.sh')
+        sim_path = args.sim_path
+        # pythonpath = 'PYTHONPATH={}'.format(args.vrep_dir)
+        xvfb = ['xvfb-run', '--auto-servernum', '-s', '-screen 0, 640x480x24 -extension RANDR']
+
+        envvars = os.environ.copy()
+        # envvars['PYTHONPATH'] = args.vrep_dir + ":" + envvars['PYTHONPATH']
+        envvars['LD_LIBRARY_PATH'] = args.vrep_dir + ":" + envvars.get('LD_LIBRARY_PATH', '')
+        try:
+            with utils.modified_remote_api_port(args.vrep_dir, remote_api_port):
+                command = [*xvfb, vrep_path, '-h', sim_path]
+                print('command:', command)
+                print('Launching simulator...')
+                subprocess.Popen(command, env=envvars, stdout=subprocess.DEVNULL)
+                time.sleep(2)  # sleep for a bit until vrep boots up
+        except:
+            # restore remoteApiConnections.txt
+            subprocess.Popen(['cp', os.path.join(args.vrep_dir, 'remoteApiConnections.txt.backup'), os.path.join(args.vrep_dir, 'remoteApiConnections.txt')])
+
         # Initialize pick-and-place system (camera and robot)
+        print('instantiating Robot class...')
         robot = Robot(is_sim, obj_mesh_dir, num_obj, self.workspace_limits,
                       tcp_host_ip, tcp_port, rtc_host_ip, rtc_port,
                       is_testing, test_preset_cases, test_preset_file, remote_api_port)

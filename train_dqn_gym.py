@@ -48,6 +48,10 @@ def main():
     parser.add_argument('--outdir', type=str, default='results',
                         help='Directory path to save output files.'
                              ' If it does not exist, it will be created.')
+    parser.add_argument('--vrep-dir', type=str, required=True,
+                        help='Directory path to vrep')
+    parser.add_argument('--sim-path', type=str, required=True,
+                        help='File path to simulation.ttt file')
     parser.add_argument('--env', type=str, default='Pendulum-v0')
     parser.add_argument('--seed', type=int, default=0,
                         help='Random seed [0, 2 ** 32)')
@@ -104,6 +108,8 @@ def main():
             config_vars.remote_api_port = 19998
         else:
             config_vars.remote_api_port = 19997
+        config_vars.vrep_dir = args.vrep_dir
+        config_vars.sim_path = args.sim_path
         env = PhysActionWrapper(PhysIntuitionEnv(config_vars))
         # Use different random seeds for train and test envs
         env_seed = 2 ** 32 - 1 - args.seed if test else args.seed

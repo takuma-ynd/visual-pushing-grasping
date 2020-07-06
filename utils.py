@@ -1,5 +1,7 @@
+import os
 import struct
 import math
+from contextlib import contextmanager
 import numpy as np
 import cv2
 import torch
@@ -312,15 +314,27 @@ class CrossEntropyLoss2d(nn.Module):
 
 
 
+def set_remote_api_port(vrep_dir, port, default_port='19997'):
+    if int(default_port) == int(port):
+        return
+
+    config_file = os.path.join(vrep_dir, 'remoteApiConnections.txt')
+    with open(config_file, 'r+') as f:
+        replaced = f.read().replace(str(default_port), str(port))
+        f.write(replaced)
 
 
+def revert_remote_api_port(vrep_dir, port, default_port='19997'):
+    if int(default_port) == int(port):
+        return
 
+    config_file = os.path.join(vrep_dir, 'remoteApiConnections.txt')
+    with open(config_file, 'r+') as f:
+        replaced = f.read().replace(str(port), str(default_port))
+        f.write(replaced)
 
-
-
-
-
-
-
-
-
+@contextmanager
+def modified_remote_api_port(vrep_dir, port, default_port='19997'):
+    set_remote_api_port(vrep_dir, port, default_port)
+    yield
+    revert_remote_api_port(vrep_dir, port, default_port)
