@@ -35,8 +35,14 @@ from config import Config
 
 
 def main():
-    import logging
-    logging.basicConfig(level=logging.DEBUG)
+    # import logging
+    # logging.basicConfig(
+    #     level=logging.DEBUG,
+    #     handlers=[
+    #         logging.FileHandler("debug.log"),
+    #         logging.StreamHandler(sys.stdout)
+    #     ]
+    # )
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--outdir', type=str, default='results',
@@ -78,6 +84,15 @@ def main():
     args.outdir = experiments.prepare_output_dir(
         args, args.outdir, argv=sys.argv)
     print('Output files are saved in {}'.format(args.outdir))
+
+    import logging
+    logging.basicConfig(
+        level=logging.DEBUG,
+        handlers=[
+            logging.FileHandler(os.path.join(args.outdir, "debug.log")),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
 
     def clip_action_filter(a):
         return np.clip(a, action_space.low, action_space.high)

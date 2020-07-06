@@ -167,13 +167,15 @@ class PhysIntuitionEnv(gym.Env):
         # If heuristic bootstrapping is enabled: if change has not been detected more than 2 times, execute heuristic algorithm to detect grasps/pushes
         # NOTE: typically not necessary and can reduce final performance.
         if id2actstr[primitive_action] == 'push':
-            print(
-                'Change not detected for more than two pushes. Running heuristic pushing.')
+            # print(
+            #     'Change not detected for more than two pushes. Running heuristic pushing.')
+            print('Running heuristic pushing...')
             best_pix_ind = heuristics.push_heuristic(valid_depth_heightmap)
             self.shared_vars.no_change_count[0] = 0
         elif id2actstr[primitive_action] == 'grasp':
-            print(
-                'Change not detected for more than two grasps. Running heuristic grasping.')
+            # print(
+            #     'Change not detected for more than two grasps. Running heuristic grasping.')
+            print('Running heuristic grasping.')
             best_pix_ind = heuristics.grasp_heuristic(valid_depth_heightmap)
             self.shared_vars.no_change_count[1] = 0
 
