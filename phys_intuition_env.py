@@ -2,6 +2,7 @@
 import os
 import subprocess
 import time
+import logging
 import cv2
 from robot import Robot
 from logger import Logger
@@ -74,6 +75,7 @@ class PhysIntuitionEnv(gym.Env):
         random_seed = args.random_seed
         remote_api_port = args.remote_api_port
         self.remote_api_port = remote_api_port
+        self.logger = logging.getLogger('PhysIntuitionEnv')
         # force_cpu = args.force_cpu
 
         # ------------- Algorithm options -------------
@@ -117,15 +119,27 @@ class PhysIntuitionEnv(gym.Env):
         # envvars['PYTHONPATH'] = args.vrep_dir + ":" + envvars['PYTHONPATH']
         envvars['LD_LIBRARY_PATH'] = args.vrep_dir + ":" + envvars.get('LD_LIBRARY_PATH', '')
         try:
+            self.logger.debug('modifying remote api port...')
             with utils.modified_remote_api_port(args.vrep_dir, remote_api_port):
-                command = [*xvfb, vrep_path, '-h', sim_path]
-                print('command:', command)
-                print('Launching simulator...')
-                subprocess.Popen(command, env=envvars, stdout=subprocess.DEVNULL)
-                time.sleep(2)  # sleep for a bit until vrep boots up
-        except:
+                if args.display is not None:
+                    envvars['DISPLAY'] = args.display
+                    command = [vrep_path, sim_path]
+                else:
+                    command = [*xvfb, vrep_path, '-h', sim_path]
+                self.logger.debug('command: {}'.format(command))
+                self.logger.debug('Launching simulator...')
+
+                # show logs from the simulator if logging level is DEBUG
+                stdout = None if self.logger.level == logging.DEBUG else subprocess.DEVNULL
+                subprocess.Popen(command, env=envvars, stdout=stdout)
+                # subprocess.Popen(command, env=envvars)
+                self.logger.debug('restoring remote api port...')
+                time.sleep(10)  # sleep for a bit until vrep boots up
+        except Exception as e:
             # restore remoteApiConnections.txt
+            print('restoring remoteApiConnections.txt...')
             subprocess.Popen(['cp', os.path.join(args.vrep_dir, 'remoteApiConnections.txt.backup'), os.path.join(args.vrep_dir, 'remoteApiConnections.txt')])
+            raise e
 
         # Initialize pick-and-place system (camera and robot)
         print('instantiating Robot class...')
@@ -152,7 +166,9 @@ class PhysIntuitionEnv(gym.Env):
         # highs_yx = self.workspace_limits[:, 1][:2][::-1]
         # highs_angle = [16.0]
         # high = np.asarray(highs_angle + highs_yx)
-        self.action_space = spaces.Tuple((spaces.Discrete(2), spaces.Box(low=np.array([0, 0, 0]), high=np.array([16, 224 - 1, 224 - 1]), dtype=int)))
+        # self.action_space = spaces.Tuple((spaces.Discrete(2), spaces.Box(low=np.array([0, 0, 0]), high=np.array([16, 224 - 1, 224 - 1]), dtype=int)))
+        self.n_actions = 4  # dir_x, dir_y, x, y
+        self.action_space = spaces.Box(-1., 1., shape=(self.n_actions,), dtype='float32')
         # TEMP:
         # self.action_space = spaces.Box(low=np.array([0, 0, 0], dtype=int), high=np.array([16, 224 - 1, 224 - 1], dtype=int), dtype=int)
         self.observation_space = spaces.Box(low=np.zeros((480, 640, 3), dtype=np.uint8), high=np.ones((480, 640, 3), dtype=np.uint8))
@@ -161,6 +177,86 @@ class PhysIntuitionEnv(gym.Env):
         random.seed(seed_val)
         np.random.seed(seed_val)
 
+
+    def _get_action(self, raw_action, primitive_action, valid_depth_heightmap):
+        assert len(raw_action) == 4, 'len(raw_action): {}'.format(len(raw_action))  # dir_x, dir_y, x, y
+        raw_direction, raw_position = raw_action[:2], raw_action[2:]
+        x_width = self.workspace_limits[0][1] - self.workspace_limits[0][0]
+        y_width = self.workspace_limits[1][1] - self.workspace_limits[1][0]
+        x_min = self.workspace_limits[0][0]
+        y_min = self.workspace_limits[1][0]
+        z_min = self.workspace_limits[2][0]
+        action_width = self.action_space.high[-1] - self.action_space.low[-1]
+        min_action = self.action_space.low[0]
+        normalized_action = (raw_position - min_action) / action_width
+        best_pix_x = int(normalized_action[0] * (valid_depth_heightmap.shape[0] - 1))
+        best_pix_y = int(normalized_action[1] * (valid_depth_heightmap.shape[1] - 1))
+        primitive_position = [normalized_action[0] * x_width + x_min, normalized_action[1] * y_width + y_min, valid_depth_heightmap[best_pix_y][best_pix_x] + z_min]
+
+        # Handle the corner cases
+        if raw_direction[0] == 0:
+            if random.random() < 0.5:
+                raw_direction[0] = 1e-8
+            else:
+                raw_direction[0] = - 1e-8
+
+        if raw_direction[1] == 0:
+            if random.random() < 0.5:
+                raw_direction[1] = 1e-8
+            else:
+                raw_direction[1] = - 1e-8
+
+        if raw_direction[0] > 0 and raw_direction[1] > 0:  # First quadrant
+            best_rotation_angle = np.arctan(raw_direction[1] / raw_direction[0])
+        elif raw_direction[0] < 0 and raw_direction[1] < 0:  # Third quadrant
+            best_rotation_angle = np.arctan(raw_direction[1] / raw_direction[0]) + np.pi
+        elif raw_direction[0] > 0 and raw_direction[1] < 0:  # Fourth quadrant
+            best_rotation_angle = np.arctan(raw_direction[1] / raw_direction[0]) + 2 * np.pi
+        elif raw_direction[0] < 0 and raw_direction[1] > 0:  # Second quadrant
+            best_rotation_angle = np.arctan(raw_direction[1] / raw_direction[0]) + np.pi
+
+        # If pushing, adjust start position, and make sure z value is safe and not too low
+        if id2actstr[primitive_action] == 'push': # or nonlocal_variables['primitive_action'] == 'place':
+            finger_width = 0.02
+            safe_kernel_width = int(np.round((finger_width/2)/self.heightmap_resolution))
+            local_region = valid_depth_heightmap[max(best_pix_y - safe_kernel_width, 0):min(best_pix_y + safe_kernel_width + 1, valid_depth_heightmap.shape[0]), max(best_pix_x - safe_kernel_width, 0):min(best_pix_x + safe_kernel_width + 1, valid_depth_heightmap.shape[1])]
+            if local_region.size == 0:
+                safe_z_position = self.workspace_limits[2][0]
+            else:
+                safe_z_position = np.max(local_region) + self.workspace_limits[2][0]
+            primitive_position[2] = safe_z_position
+
+        return primitive_position, best_rotation_angle
+
+    def _get_action2(self, raw_action, primitive_action, valid_depth_heightmap):
+        assert raw_action.shape == (3,)  # radian, x, y
+        raw_rotation, raw_position = raw_action[0], raw_action[1:]
+        x_width = self.workspace_limits[0][1] - self.workspace_limits[0][0]
+        y_width = self.workspace_limits[1][1] - self.workspace_limits[1][0]
+        x_min = self.workspace_limits[0][0]
+        y_min = self.workspace_limits[1][0]
+        z_min = self.workspace_limits[2][0]
+        action_width = self.action_space.high[-1] - self.action_space.low[-1]
+        min_action = self.action_space.low[0]
+        normalized_action = (raw_position - min_action) / action_width
+        best_pix_x = int(normalized_action[0] * valid_depth_heightmap.shape[0])
+        best_pix_y = int(normalized_action[1] * valid_depth_heightmap.shape[1])
+        primitive_position = [normalized_action[0] * x_width + x_min, normalized_action[1] * y_width + y_min, valid_depth_heightmap[best_pix_y][best_pix_x] + z_min]
+
+        best_rotation_angle = raw_rotation % np.pi
+
+        # If pushing, adjust start position, and make sure z value is safe and not too low
+        if id2actstr[primitive_action] == 'push': # or nonlocal_variables['primitive_action'] == 'place':
+            finger_width = 0.02
+            safe_kernel_width = int(np.round((finger_width/2)/self.heightmap_resolution))
+            local_region = valid_depth_heightmap[max(best_pix_y - safe_kernel_width, 0):min(best_pix_y + safe_kernel_width + 1, valid_depth_heightmap.shape[0]), max(best_pix_x - safe_kernel_width, 0):min(best_pix_x + safe_kernel_width + 1, valid_depth_heightmap.shape[1])]
+            if local_region.size == 0:
+                safe_z_position = self.workspace_limits[2][0]
+            else:
+                safe_z_position = np.max(local_region) + self.workspace_limits[2][0]
+            primitive_position[2] = safe_z_position
+
+        return primitive_position, best_rotation_angle
 
     def get_action(self, best_pix_ind, primitive_action, num_rotations, valid_depth_heightmap):
         '''calculate primitive_position, best_rotation_angle from best_pix_ind'''
@@ -222,11 +318,13 @@ class PhysIntuitionEnv(gym.Env):
         """
         with timed('step process'):
             done = False
-            primitive_action, best_pix_ind = action
+            # primitive_action, best_pix_ind = action
+            primitive_action, raw_action = action
             # print('action', action)
             # print('primitive_action', primitive_action)
             # print('best_pix_ind', best_pix_ind)
-            primitive_position, best_rotation_angle = self.get_action(best_pix_ind, primitive_action, self.num_rotations, self.shared_obs.valid_depth_heightmap)
+            # primitive_position, best_rotation_angle = self.get_action(best_pix_ind, primitive_action, self.num_rotations, self.shared_obs.valid_depth_heightmap)
+            primitive_position, best_rotation_angle = self._get_action(raw_action, primitive_action, self.shared_obs.valid_depth_heightmap)
             # primitive_action, primitive_position, best_rotation_angle = action
 
             # Execute primitive

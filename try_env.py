@@ -1,6 +1,7 @@
 import argparse
 import numpy as np
 from phys_intuition_env import PhysIntuitionEnv
+from phys_wrapper import PhysPushActionWrapper
 
 '''
 Y
@@ -19,26 +20,29 @@ O----------------------223>  X
 '''
 def main(args):
     print('starting env..')
-    physenv = PhysIntuitionEnv(args)
+    physenv = PhysPushActionWrapper(PhysIntuitionEnv(args))
     # import ipdb; ipdb.set_trace()
     # for arg in args.keys():
     #     print(arg, '=', getattr(args, arg))
     obs = physenv.reset()
-    import ipdb; ipdb.set_trace()
     done = False
+    action_list = []
+    for binary in [-1, 1]:
+        for binary2 in [-1, 1]:
+            for binary3 in [-1, 1]:
+                for binary4 in [-1, 1]:
+                    action_list.append( [binary, binary2, binary3, binary4] )
     while not done:
-        action = physenv.action_space.sample()
-        best_pix = action[1]
+        # action = physenv.action_space.sample()
+        action = action_list.pop()
+        # print('action', action)
+        # best_pix = np.asarray([float(input('type input:')) for _ in range(3)], dtype=int).reshape(-1)
+        # action = np.asarray([float(input('type input:')) for _ in range(4)], dtype=np.float32).reshape(-1)
         print('action', action)
-        best_pix = np.asarray(input().strip().split(' '), dtype=int).reshape(-1)
-        # best_pix = np.asarray([float(input('type input:')) for _ in range(3)], dtype=int).reshape(-1)
-        # best_pix = np.asarray([float(input('type input:')) for _ in range(3)], dtype=int).reshape(-1)
-        action = (0, best_pix)  # force push
         # print('action', action)
         obs, reward, done, _ =  physenv.step(action)
         print('reward', reward)
         # img = list(obs.values())[0]
-        img = obs
 
 
 if __name__ == '__main__':
@@ -81,6 +85,11 @@ if __name__ == '__main__':
     parser.add_argument('--save_visualizations', dest='save_visualizations', action='store_true', default=False,          help='save visualizations of FCN predictions?')
     
     parser.add_argument('--remote_api_port', dest='remote_api_port', type=int, action='store', default=19997,          help='remote api port')
+    parser.add_argument('--vrep-dir', type=str, required=True,
+                        help='Directory path to vrep')
+    parser.add_argument('--sim-path', type=str, required=True,
+                        help='File path to simulation.ttt file')
+    parser.add_argument('--display', type=str, default=None)
     # Run main program with specified arguments
     args = parser.parse_args()
     main(args)

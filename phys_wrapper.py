@@ -19,3 +19,15 @@ class PhysActionWrapper(gym.ActionWrapper):
         _, act = action
         assert len(act) == 3
         return np.ravel_multi_index(act, (16, 224, 224))
+
+
+class PhysPushActionWrapper(gym.ActionWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+    def action(self, action):
+        return (0, action)
+
+    def reverse_action(self, action):
+        _, act = action
+        return act

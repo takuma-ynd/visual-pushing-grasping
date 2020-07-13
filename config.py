@@ -25,3 +25,4 @@ class Config:
     tcp_port=30002
     test_preset_cases=False
     test_preset_file='test-10-obj-01.txt'
+    display=None
