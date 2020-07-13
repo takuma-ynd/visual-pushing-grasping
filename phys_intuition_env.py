@@ -102,6 +102,8 @@ class PhysIntuitionEnv(gym.Env):
         logging_directory = os.path.abspath(args.logging_directory) if continue_logging else os.path.abspath('logs')
         # save_visualizations = args.save_visualizations # Save visualizations of FCN predictions? Takes 0.6s per training step if set to True
 
+        self.sleeptime_before_bootup = getattr(args, 'sleeptime_before_bootup', 2)
+
         # ------ Others ------
         self.num_rotations = 16
 
@@ -134,7 +136,7 @@ class PhysIntuitionEnv(gym.Env):
                 subprocess.Popen(command, env=envvars, stdout=stdout)
                 # subprocess.Popen(command, env=envvars)
                 self.logger.debug('restoring remote api port...')
-                time.sleep(10)  # sleep for a bit until vrep boots up
+                time.sleep(self.sleeptime_before_bootup)  # sleep for a bit until vrep boots up
         except Exception as e:
             # restore remoteApiConnections.txt
             print('restoring remoteApiConnections.txt...')

@@ -26,3 +26,4 @@ class Config:
     test_preset_cases=False
     test_preset_file='test-10-obj-01.txt'
     display=None
+    sleeptime_before_bootup=2

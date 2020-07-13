@@ -2,6 +2,7 @@ import argparse
 import numpy as np
 from phys_intuition_env import PhysIntuitionEnv
 from phys_wrapper import PhysPushActionWrapper
+from gym.wrappers import ResizeObservation  # doesn't work in an older version :(
 
 '''
 Y
@@ -21,6 +22,7 @@ O----------------------223>  X
 def main(args):
     print('starting env..')
     physenv = PhysPushActionWrapper(PhysIntuitionEnv(args))
+    physenv = ResizeObservation(physenv, (224, 224))
     # import ipdb; ipdb.set_trace()
     # for arg in args.keys():
     #     print(arg, '=', getattr(args, arg))
@@ -42,6 +44,7 @@ def main(args):
         # print('action', action)
         obs, reward, done, _ =  physenv.step(action)
         print('reward', reward)
+        print('obs.shape', obs.shape)
         # img = list(obs.values())[0]
 
 
