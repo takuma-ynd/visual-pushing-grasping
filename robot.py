@@ -65,12 +65,21 @@ class Robot(object):
             # Connect to simulator
             # vrep.simxFinish(-1) # Just in case, close all opened connections <-- temporaly remove this to run multiple instances
             self.sim_client = vrep.simxStart('127.0.0.1', remote_api_port, True, True, 5000, 5) # Connect to V-REP on port 19997
-            if self.sim_client == -1:
-                print('Failed to connect to simulation (V-REP remote API server). Exiting.')
-                exit()
-            else:
-                print('Connected to simulation at port {}'.format(remote_api_port))
-                self.restart_sim()
+            retry_counter = 0
+            while self.sim_client == -1:
+                print('Failed to connect to simulation (port: {})'.format(remote_api_port))
+                time.sleep(1)
+                print('Retrying... ({} / {})'.format(retry_counter + 1, 3+1))
+                if retry_counter == 3:
+                    print('Aborting')
+                    exit()
+
+                self.sim_client = vrep.simxStart('127.0.0.1', remote_api_port, True, True, 5000, 5) # Connect to V-REP on port 19997
+                retry_counter += 1
+
+            print('Connected to simulation at port {}'.format(remote_api_port))
+            print('restarting the simulator...')
+            self.restart_sim()
 
             self.is_testing = is_testing
             self.test_preset_cases = test_preset_cases
@@ -917,7 +926,7 @@ class Robot(object):
 
 
     def push(self, position, heightmap_rotation_angle, workspace_limits):
-        print('Executing: push at (%f, %f, %f)' % (position[0], position[1], position[2]))
+        print('Executing: push at (%f, %f, %f), rotation: (%f)' % (position[0], position[1], position[2], heightmap_rotation_angle))
 
         if self.is_sim:
 
