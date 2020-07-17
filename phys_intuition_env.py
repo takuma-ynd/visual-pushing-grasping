@@ -44,7 +44,7 @@ def calc_reward(robot, no_change_count, prev_obj_positions):
 class PhysIntuitionEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, args):
+    def __init__(self, args, lock=None):
         """
         Every environment should be derived from gym.Env and at least contain the variables observation_space and action_space 
         specifying the type of possible observations and actions using spaces.Box or spaces.Discrete.
@@ -120,9 +120,16 @@ class PhysIntuitionEnv(gym.Env):
         envvars = os.environ.copy()
         # envvars['PYTHONPATH'] = args.vrep_dir + ":" + envvars['PYTHONPATH']
         envvars['LD_LIBRARY_PATH'] = args.vrep_dir + ":" + envvars.get('LD_LIBRARY_PATH', '')
+        # Synchronization
+        if lock is not None:
+            lock.acquire()
+            self.logger.info('process is acquired (port: {})'.format(remote_api_port))
+
         try:
             self.logger.debug('modifying remote api port...')
             with utils.modified_remote_api_port(args.vrep_dir, remote_api_port):
+                with open(os.path.join(args.vrep_dir, 'remoteApiConnections.txt'), 'r') as f:
+                    print(f.read())
                 if args.display is not None:
                     envvars['DISPLAY'] = args.display
                     command = [vrep_path, sim_path]
@@ -144,17 +151,21 @@ class PhysIntuitionEnv(gym.Env):
             raise e
 
         # Initialize pick-and-place system (camera and robot)
-        print('instantiating Robot class...')
+        print('instantiating Robot class with port {}...'.format(remote_api_port))
         robot = Robot(is_sim, obj_mesh_dir, num_obj, self.workspace_limits,
                       tcp_host_ip, tcp_port, rtc_host_ip, rtc_port,
                       is_testing, test_preset_cases, test_preset_file, remote_api_port)
         self.robot = robot
 
+        if lock is not None:
+            lock.release()
+            self.logger.info('released the process (port: {})'.format(remote_api_port))
+
         # Initialize data logger
-        logger = Logger(continue_logging, logging_directory)
-        logger.save_camera_info(self.robot.cam_intrinsics, self.robot.cam_pose, self.robot.cam_depth_scale) # Save camera intrinsics and pose
-        logger.save_heightmap_info(self.workspace_limits, args.heightmap_resolution) # Save heightmap parameters
-        self.logger = logger
+        data_logger = Logger(continue_logging, logging_directory)
+        data_logger.save_camera_info(self.robot.cam_intrinsics, self.robot.cam_pose, self.robot.cam_depth_scale) # Save camera intrinsics and pose
+        data_logger.save_heightmap_info(self.workspace_limits, args.heightmap_resolution) # Save heightmap parameters# 
+        self.data_logger = data_logger
 
         # SharedVars = namedtuple('SharedVars', ['no_change_count', 'prev_primitive_action', 'prev_color_img', 'prev_depth_img', 'prev_color_heightmap', 'prev_depth_heightmap', 'prev_best_pix_ind', 'prev_obj2segmentation_img', 'cam_depth_scale'])
         self.shared_vars = SharedVars()
@@ -347,9 +358,9 @@ class PhysIntuitionEnv(gym.Env):
             valid_depth_heightmap = depth_heightmap.copy()
             valid_depth_heightmap[np.isnan(valid_depth_heightmap)] = 0
 
-            self.logger.save_images(self.iteration, color_img, depth_img, '0', reset_counter=self.reset_counter)
-            self.logger.save_heightmaps(self.iteration, color_heightmap, valid_depth_heightmap, '0', reset_counter=self.reset_counter)
-            self.logger.save_segmented_images(self.iteration, self.local_counter-1, obj2segmented_img, reset_counter=self.reset_counter)
+            # self.data_logger.save_images(self.iteration, color_img, depth_img, '0', reset_counter=self.reset_counter)
+            # self.data_logger.save_heightmaps(self.iteration, color_heightmap, valid_depth_heightmap, '0', reset_counter=self.reset_counter)
+            # self.data_logger.save_segmented_images(self.iteration, self.local_counter-1, obj2segmented_img, reset_counter=self.reset_counter)
 
             # TEMP:
             obs = list(obj2segmented_img.values())[0]
@@ -415,6 +426,8 @@ class PhysIntuitionEnv(gym.Env):
             self.shared_obs.valid_depth_heightmap = valid_depth_heightmap
             self.shared_vars.prev_obj_positions = self.robot.get_obj_positions().copy()
 
+            self.logger.info('reward: {}'.format(reward))
+            # self.logger.info('--- iteration {} is done ---'.format(self.iteration))
             self.iteration += 1
             self.local_counter += 1
 
@@ -430,7 +443,9 @@ class PhysIntuitionEnv(gym.Env):
         """
         if self.is_sim:
             if self.reset_counter != 0:  # Don't call them at the first time to call reset
+                self.logger.debug('restarting sim...')
                 self.robot.restart_sim()
+                self.logger.debug('adding objects...')
                 self.robot.add_objects()
             # counter = 0
             # reset_counter += 1
@@ -448,9 +463,9 @@ class PhysIntuitionEnv(gym.Env):
             valid_depth_heightmap = depth_heightmap.copy()
             valid_depth_heightmap[np.isnan(valid_depth_heightmap)] = 0
 
-            self.logger.save_images(self.iteration, color_img, depth_img, '0', reset_counter=self.reset_counter)
-            self.logger.save_heightmaps(self.iteration, color_heightmap, valid_depth_heightmap, '0', reset_counter=self.reset_counter)
-            self.logger.save_segmented_images(self.iteration, self.local_counter-1, obj2segmented_img, reset_counter=self.reset_counter)
+            # self.data_logger.save_images(self.iteration, color_img, depth_img, '0', reset_counter=self.reset_counter)
+            # self.data_logger.save_heightmaps(self.iteration, color_heightmap, valid_depth_heightmap, '0', reset_counter=self.reset_counter)
+            # self.data_logger.save_segmented_images(self.iteration, self.local_counter-1, obj2segmented_img, reset_counter=self.reset_counter)
             obs = list(obj2segmented_img.values())[0]
 
 
@@ -487,9 +502,9 @@ class PhysIntuitionEnv(gym.Env):
             valid_depth_heightmap = depth_heightmap.copy()
             valid_depth_heightmap[np.isnan(valid_depth_heightmap)] = 0
 
-            self.logger.save_images(self.iteration, color_img, depth_img, '0', reset_counter=self.reset_counter)
-            self.logger.save_heightmaps(self.iteration, color_heightmap, valid_depth_heightmap, '0', reset_counter=self.reset_counter)
-            self.logger.save_segmented_images(self.iteration, self.local_counter-1, obj2segmented_img, reset_counter=self.reset_counter)
+            # self.data_logger.save_images(self.iteration, color_img, depth_img, '0', reset_counter=self.reset_counter)
+            # self.data_logger.save_heightmaps(self.iteration, color_heightmap, valid_depth_heightmap, '0', reset_counter=self.reset_counter)
+            # self.data_logger.save_segmented_images(self.iteration, self.local_counter-1, obj2segmented_img, reset_counter=self.reset_counter)
             obs = list(obj2segmented_img.values())[0]
 
 
@@ -511,7 +526,7 @@ class PhysIntuitionEnv(gym.Env):
             self.shared_obs.valid_depth_heightmap = valid_depth_heightmap
 
         # trainer.clearance_log.append([trainer.iteration]) 
-        # self.logger.write_to_log('clearance', trainer.clearance_log)
+        # self.data_logger.write_to_log('clearance', trainer.clearance_log)
 
         self.reset_counter += 1
         self.local_counter = 0
