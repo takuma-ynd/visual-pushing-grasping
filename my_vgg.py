@@ -105,7 +105,7 @@ class VGGLayers(link.Chain):
             self.fc_2nd_input = Linear(4, 16, **kwargs)
             self.fc_2nd_input_merge = Linear(4096 + 16, 4096, **kwargs)
             self.fc7 = Linear(4096, 1024, **kwargs)
-            self.fc8 = Linear(1024, 1024, **kwargs)
+            self.fc8 = Linear(1024, 1, **kwargs)
 
         # if pretrained_model == 'auto':
         #     if n_layers == 16:
@@ -207,7 +207,7 @@ class VGGLayers(link.Chain):
             if key in target_layers:
                 activations[key] = h
                 target_layers.remove(key)
-        return activations
+        return activations['fc8']
 
     # def extract(self, images, layers=None, size=(224, 224), **kwargs):
     #     """extract(self, images, layers=['fc7'], size=(224, 224))
