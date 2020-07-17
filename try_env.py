@@ -1,4 +1,5 @@
 import argparse
+import logging
 import numpy as np
 from phys_intuition_env import PhysIntuitionEnv
 from phys_wrapper import PhysPushActionWrapper
@@ -26,6 +27,7 @@ def main(args):
     # import ipdb; ipdb.set_trace()
     # for arg in args.keys():
     #     print(arg, '=', getattr(args, arg))
+    print('running env.reset()...')
     obs = physenv.reset()
     done = False
     action_list = []
@@ -95,4 +97,5 @@ if __name__ == '__main__':
     parser.add_argument('--display', type=str, default=None)
     # Run main program with specified arguments
     args = parser.parse_args()
+    logging.getLogger('PhysIntuitionEnv').setLevel(logging.DEBUG)
     main(args)

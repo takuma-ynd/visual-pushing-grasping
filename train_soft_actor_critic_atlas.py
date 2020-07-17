@@ -4,6 +4,8 @@ import functools
 import logging
 import os
 import sys
+import time
+from multiprocessing import Lock
 
 import chainer
 from chainer import functions as F
@@ -44,7 +46,7 @@ def concat_obs_and_action(obs, action):
     """Concat observation and action to feed the critic."""
     return F.concat((obs.reshape((action.shape[0], -1)), action), axis=-1)
 
-def make_env(args, seed, idx, test):
+def make_env(args, seed, idx, test, lock=None):
     # from pybullet_envs.bullet.kuka_diverse_object_gym_env import KukaDiverseObjectEnv  # NOQA
     # Use different random seeds for train and test envs
     process_seed = int(seed)
@@ -63,14 +65,15 @@ def make_env(args, seed, idx, test):
     config_vars = Config()
     print('-------------------------------------- MAKE ENV ------------------------------------')
     if test:
-        config_vars.remote_api_port = 19997 + 256 + idx
+        config_vars.remote_api_port = 19997 - 256 + idx
     else:
         config_vars.remote_api_port = 19997 + idx
     config_vars.vrep_dir = args.vrep_dir
     config_vars.sim_path = args.sim_path
     print('port:', config_vars.remote_api_port)
     config_vars.sleeptime_before_bootup = args.sleeptime_before_bootup
-    env = PhysIntuitionEnv(config_vars)
+    config_vars.display = args.display
+    env = PhysIntuitionEnv(config_vars, lock)
     env = gym.wrappers.ResizeObservation(env, (224, 224))
     # assert env.observation_space is None
     # env.observation_space = gym.spaces.Box(
@@ -170,18 +173,18 @@ def main():
                         help='GPU to use, set to -1 if no GPU.')
     parser.add_argument('--load', type=str, default='',
                         help='Directory to load agent from.')
-    parser.add_argument('--steps', type=int, default=10 ** 7,
+    parser.add_argument('--steps', type=int, default=50000,
                         help='Total number of timesteps to train the agent.')
     parser.add_argument('--eval-n-runs', type=int, default=20,
                         help='Number of episodes run for each evaluation.')
-    parser.add_argument('--eval-interval', type=int, default=100000,
+    parser.add_argument('--eval-interval', type=int, default=2500,
                         help='Interval in timesteps between evaluations.')
-    parser.add_argument('--replay-start-size', type=int, default=10000,
+    parser.add_argument('--replay-start-size', type=int, default=250,
                         help='Minimum replay buffer size before ' +
                         'performing gradient updates.')
     parser.add_argument('--update-interval', type=int, default=1,
                         help='Interval in timesteps between model updates.')
-    parser.add_argument('--batch-size', type=int, default=256,
+    parser.add_argument('--batch-size', type=int, default=64,
                         help='Minibatch size')
     parser.add_argument('--render', action='store_true',
                         help='Render env states in a GUI window.')
@@ -189,7 +192,7 @@ def main():
                         help='Just run evaluation, not training.')
     parser.add_argument('--monitor', action='store_true',
                         help='Wrap env with Monitor to write videos.')
-    parser.add_argument('--log-interval', type=int, default=1000,
+    parser.add_argument('--log-interval', type=int, default=100,
                         help='Interval in timesteps between outputting log'
                              ' messages during training')
     parser.add_argument('--logger-level', type=int, default=logging.INFO,
@@ -206,11 +209,16 @@ def main():
                         help='Learning rate.')
     parser.add_argument('--adam-eps', type=float, default=1e-1,
                         help='Adam eps.')
-    parser.add_argument('--sleeptime-before-bootup', type=int, default=2,
+    parser.add_argument('--sleeptime-before-bootup', type=int, default=4,
                         help='sleeptime before a simulator boots up')
+    parser.add_argument('--display', type=str, default=None,
+                        help='set DISPLAY env (default: None)')
     args = parser.parse_args()
 
     logging.basicConfig(level=args.logger_level)
+    logging.getLogger('PhysIntuitionEnv').setLevel(args.logger_level)
+    logging.getLogger('SoftActorCriticAgent').setLevel(logging.DEBUG)
+
 
     args.outdir = experiments.prepare_output_dir(
         args, args.outdir, argv=sys.argv)
@@ -225,9 +233,10 @@ def main():
     process_seeds = np.arange(args.num_envs) + args.seed * args.num_envs
     assert process_seeds.max() < 2 ** 32
 
+    lock = Lock()
     def make_batch_env(test):
         return MultiprocessVectorEnv(
-            [functools.partial(make_env, args, process_seeds[idx], idx, test)
+            [functools.partial(make_env, args, process_seeds[idx], idx, test, lock)
              for idx, env in enumerate(range(args.num_envs))])
 
     sample_env = make_env(args, process_seeds[0], -1, test=False)
@@ -238,6 +247,7 @@ def main():
     print('Observation space:', obs_space)
     print('Action space:', action_space)
     del sample_env
+    time.sleep(6)
 
     action_size = action_space.low.size
 
@@ -307,7 +317,9 @@ def main():
             action_space.low, action_space.high).astype(np.float32)
 
     # Hyperparameters in http://arxiv.org/abs/1802.09477
-    agent = chainerrl.agents.SoftActorCritic(
+    import soft_actor_critic
+    # agent = chainerrl.agents.SoftActorCritic(
+    agent = soft_actor_critic.SoftActorCritic(
         policy,
         q_func1,
         q_func2,
@@ -319,6 +331,7 @@ def main():
         update_interval=args.update_interval,
         replay_start_size=args.replay_start_size,
         gpu=args.gpu,
+        logger=logging.getLogger("SoftActorCriticAgent"),
         minibatch_size=args.batch_size,
         burnin_action_func=burnin_action_func,
         entropy_target=-action_size,
@@ -326,9 +339,11 @@ def main():
             args.lr, eps=args.adam_eps),
     )
 
+
     if len(args.load) > 0:
         agent.load(args.load)
 
+    print('num_envs:', args.num_envs)
     if args.demo:
         eval_env = make_env(args, seed=0, test=True)
         eval_stats = experiments.eval_performance(
