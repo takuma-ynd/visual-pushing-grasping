@@ -312,16 +312,21 @@ class CrossEntropyLoss2d(nn.Module):
     def forward(self, inputs, targets):
         return self.nll_loss(F.log_softmax(inputs, dim=1), targets)
 
+template = '''
+portIndex1_port = {port}
+portIndex1_debug = false
+portIndex1_syncSimTrigger = true'''
 
 
 def set_remote_api_port(vrep_dir, port, default_port='19997'):
-    if int(default_port) == int(port):
-        return
+    # if int(default_port) == int(port):
+    #     return
 
     config_file = os.path.join(vrep_dir, 'remoteApiConnections.txt')
-    with open(config_file, 'r+') as f:
-        replaced = f.read().replace(str(default_port), str(port))
-        f.write(replaced)
+    with open(config_file, 'w') as f:
+        # replaced = f.read().replace(str(default_port), str(port))
+        # f.write(replaced)
+        f.write(template.format(port=port))
 
 
 def revert_remote_api_port(vrep_dir, port, default_port='19997'):
@@ -329,9 +334,10 @@ def revert_remote_api_port(vrep_dir, port, default_port='19997'):
         return
 
     config_file = os.path.join(vrep_dir, 'remoteApiConnections.txt')
-    with open(config_file, 'r+') as f:
-        replaced = f.read().replace(str(port), str(default_port))
-        f.write(replaced)
+    with open(config_file, 'w') as f:
+        # replaced = f.read().replace(str(port), str(default_port))
+        # f.write(replaced)
+        f.write(template.format(port=port))
 
 @contextmanager
 def modified_remote_api_port(vrep_dir, port, default_port='19997'):
