@@ -61,8 +61,6 @@ See https://github.com/numpy/numpy/issues/12793 for details.
              for (work_remote, env_fn) in zip(self.work_remotes, env_fns)]
         for p in self.ps:
             p.start()
-            print('grace period (10.0s) between booting multiple envs...')
-            time.sleep(10)
 
         self.last_obs = [None] * self.num_envs
         self.remotes[0].send(('get_spaces', None))
